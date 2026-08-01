@@ -7,8 +7,6 @@ obj/
 
 [Tt]est[Rr]esult*/
 *.trx
-*.coverage
-*.coveragexml
 
 *.nupkg
 *.snupkg
