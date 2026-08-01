@@ -11,7 +11,7 @@ Seed your database from your EF Core model. One line, full referential integrity
 
 ## The problem
 
-Every EF Core seeder available today asks **you** to describe the model again — in CSV files, in factory classes, in attributes with manual priority numbers, in JSON config. You already declared all of it in your `DbContext`. Then a migration changes it and your seeder breaks.
+Every EF Core seeder available today asks **you** to describe the model again, in CSV files, in factory classes, in attributes with manual priority numbers, in JSON config. You already declared all of it in your `DbContext`. Then a migration changes it and your seeder breaks.
 
 And the data you end up with is uniform: every customer with three orders. In production one customer has 500.000. The query planner picks a different plan for each shape, so **your performance test passes while lying to you**.
 
@@ -37,7 +37,7 @@ One package. Nothing to configure before the first run.
 
 DDL introspection sees tables and columns. The EF model also carries navigation properties, owned types, TPH/TPT inheritance, value converters, shadow properties and global query filters.
 
-AutoSeed generates data your **database accepts and your application can actually read** — soft-deleted rows that respect your query filter, enums stored through a converter, owned types written as columns rather than tables.
+AutoSeed generates data your **database accepts and your application can actually read**: soft-deleted rows that respect your query filter, enums stored through a converter, owned types written as columns rather than tables.
 
 It also works before the database exists.
 
@@ -47,7 +47,7 @@ Foreign keys form a graph. AutoSeed topologically sorts it, detects cycles, and 
 
 No priority numbers. No ordering by hand.
 
-When a cycle is genuinely unsatisfiable — a required foreign key with no nullable link — AutoSeed names the entities involved and stops, instead of letting your database throw a constraint violation.
+When a cycle is genuinely unsatisfiable (a required foreign key with no nullable link), AutoSeed names the entities involved and stops, instead of letting your database throw a constraint violation.
 
 ### It generates realistic distributions, not just realistic values
 
@@ -84,7 +84,7 @@ autoseed capture --from "Server=prod;..." --out shape.json
 autoseed apply   --shape shape.json --to "Server=local;..."
 ```
 
-`capture` reads **statistics only** — row counts, index cardinality, value distribution histograms. It never reads a row. The output contains no names, no emails, no identifiers. Nothing personal, by construction rather than by promise.
+`capture` reads **statistics only**: row counts, index cardinality, value distribution histograms. It never reads a row. The output contains no names, no emails, no identifiers. Nothing personal, by construction rather than by promise.
 
 `apply` reproduces that shape locally with synthetic data, so your local query planner behaves like production's.
 
@@ -94,8 +94,8 @@ autoseed apply   --shape shape.json --to "Server=local;..."
 |---|---|
 | `net10.0` | supported |
 | `net8.0` | supported |
-| `netstandard2.0` | not yet — [open an issue](../../issues) if you need it |
-| `net45` and older | **not possible** — EF Core does not exist there |
+| `netstandard2.0` | not yet, [open an issue](../../issues) if you need it |
+| `net45` and older | **not possible**: EF Core does not exist there |
 
 EF Core itself requires .NET 8 or later from version 8 onwards, so those are the targets that matter. .NET Framework 2.0 through 4.5 is Entity Framework 6 territory, which has a different model API entirely.
 

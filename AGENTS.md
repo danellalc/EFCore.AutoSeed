@@ -6,7 +6,7 @@ If you are consuming this library rather than developing it, read [llms.txt](llm
 
 ## What this project is
 
-A library that seeds a database by reading the Entity Framework Core model. The model is the specification — nothing about entities, ordering or relationships is declared by hand.
+A library that seeds a database by reading the Entity Framework Core model. The model is the specification: nothing about entities, ordering or relationships is declared by hand.
 
 Everything else in this file follows from that.
 
@@ -26,13 +26,13 @@ Integration tests use Testcontainers and need Docker running. Unit and property 
 
 New code belongs to exactly one of seven stages:
 
-1. `ModelReader` — reads `IModel`
-2. `DependencyGraph` — stable topological sort
-3. `CycleResolver` — nullable cycles resolved, required cycles rejected
-4. `GenerationPlan` — row counts, cardinality, distribution
-5. `ValueGeneration` — semantic inference
-6. `ConstraintSatisfaction` — unique, check, length, precision
-7. `Persistence` — ordered insert
+1. `ModelReader`: reads `IModel`
+2. `DependencyGraph`: stable topological sort
+3. `CycleResolver`: nullable cycles resolved, required cycles rejected
+4. `GenerationPlan`: row counts, cardinality, distribution
+5. `ValueGeneration`: semantic inference
+6. `ConstraintSatisfaction`: unique, check, length, precision
+7. `Persistence`: ordered insert
 
 Before writing something new, find the sibling stage that already solved a similar problem.
 
@@ -42,7 +42,7 @@ Before writing something new, find the sibling stage that already solved a simil
 
 **Never reference `Microsoft.EntityFrameworkCore.*.Internal` namespaces.** They break between minor versions.
 
-**Determinism is the central guarantee.** No `Random` without a seed, no `DateTime.Now`, no `Guid.NewGuid()` anywhere in the generation path. Randomness derives hierarchically and positionally: `root → entity → row index → property`. Sorting must be stable — ties break on entity name, never hash order.
+**Determinism is the central guarantee.** No `Random` without a seed, no `DateTime.Now`, no `Guid.NewGuid()` anywhere in the generation path. Randomness derives hierarchically and positionally: `root → entity → row index → property`. Sorting must be stable: ties break on entity name, never hash order.
 
 Any change that alters generated data for a given seed is a **breaking change** requiring a major version bump.
 
@@ -54,8 +54,9 @@ Any change that alters generated data for a given seed is a **breaking change** 
 
 - No comments. Descriptive names instead.
 - No emojis, anywhere.
+- No em dash (—), anywhere: code, docs, commit messages. Use a comma, a colon, parentheses, or a new sentence.
 - Nullable reference types on, warnings as errors, `sealed` by default.
-- **XML docs required on every public member** — this ships to NuGet and becomes IntelliSense.
+- **XML docs required on every public member**: this ships to NuGet and becomes IntelliSense.
 - `ConfigureAwait(false)` on every await. This is a library.
 - `CancellationToken` on every public async method.
 - Typed exceptions derived from `AutoSeedException`, never bare `Exception`.

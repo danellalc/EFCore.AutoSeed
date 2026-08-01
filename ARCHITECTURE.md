@@ -9,7 +9,7 @@ EFCore.AutoSeed        the library. Pulls everything the common case needs.
 EFCore.AutoSeed.Cli    dotnet tool, for capture/apply and CI use.
 ```
 
-Internal modularity is an engineering concern. Package fragmentation is a user problem — nobody should have to work out which of seven packages to install, and an AI assistant will get it wrong.
+Internal modularity is an engineering concern. Package fragmentation is a user problem: nobody should have to work out which of seven packages to install, and an AI assistant will get it wrong.
 
 ## Pipeline
 
@@ -38,9 +38,9 @@ This is the interesting part. Everything else is plumbing.
 
 `Employee.ManagerId → Employee`. Or `Order.ContactId → Contact` with `Contact.DefaultOrderId → Order`.
 
-- **Nullable FK** — insert with null, second pass issues the `UPDATE`. The common case.
-- **Required FK in a cycle** — mathematically unsatisfiable without deferred constraints. AutoSeed detects it, names every entity in the cycle, and throws.
-- **Required self-reference** — same, always unsatisfiable at the root.
+- **Nullable FK**: insert with null, second pass issues the `UPDATE`. The common case.
+- **Required FK in a cycle**: mathematically unsatisfiable without deferred constraints. AutoSeed detects it, names every entity in the cycle, and throws.
+- **Required self-reference**: same, always unsatisfiable at the root.
 
 Failing clearly is the feature. Letting the database throw a foreign key violation is a bug.
 
@@ -56,14 +56,14 @@ Naive retry against a `HashSet` degrades badly at scale. AutoSeed draws from a p
 
 ### Inheritance
 
-- **TPH** — one table, discriminator column, configurable mix of subtypes.
-- **TPT and TPC** — several tables per hierarchy, each needing its own position in the global ordering.
+- **TPH**: one table, discriminator column, configurable mix of subtypes.
+- **TPT and TPC**: several tables per hierarchy, each needing its own position in the global ordering.
 
 ### Owned types and value converters
 
 An owned type is **not an entity**. It is a set of columns on the owner. Treating it as a table breaks everything downstream.
 
-Value converters (enum as string, strongly-typed IDs) require generating the CLR value and letting EF convert. This conflicts with bulk insert, which bypasses EF — see the two persistence modes below.
+Value converters (enum as string, strongly-typed IDs) require generating the CLR value and letting EF convert. This conflicts with bulk insert, which bypasses EF (see the two persistence modes below).
 
 ### Global query filters
 
@@ -83,7 +83,7 @@ Randomness flows through a seeded generator derived **hierarchically and positio
 
 The topological sort must be **stable**: ties break on entity name, never on hash order.
 
-Parallelising generation would break this. AutoSeed generates sequentially and parallelises insertion instead — insertion order does not affect content.
+Parallelising generation would break this. AutoSeed generates sequentially and parallelises insertion instead: insertion order does not affect content.
 
 Any change that alters generated data for a given seed is a **breaking change**.
 
@@ -101,7 +101,7 @@ The cost is being locked to EF Core. Deliberate trade, stated in the README.
 
 ### Why automatic ordering instead of declared priority
 
-Every existing .NET seeder asks the user to declare order — through attribute priority, file naming, or call sequence. That information is already in the model as foreign keys.
+Every existing .NET seeder asks the user to declare order: through attribute priority, file naming, or call sequence. That information is already in the model as foreign keys.
 
 Asking for it again is asking the user to maintain a second, manual copy of something the framework already knows, which drifts the moment a relationship changes.
 
@@ -113,8 +113,8 @@ Value generation is one stage of seven. Keeping it isolated means the engine can
 
 `SaveChanges` with a million rows is not viable. Bulk copy is, but it bypasses EF, so value converters, shadow properties and key generation must be reimplemented by hand.
 
-- **Fidelity mode** — goes through EF. Always correct, slower. The default.
-- **Fast mode** — bulk copy. Opt-in.
+- **Fidelity mode**: goes through EF. Always correct, slower. The default.
+- **Fast mode**: bulk copy. Opt-in.
 
 An equivalence test asserts both modes produce identical data for the same seed. Fast mode does not ship without it.
 
@@ -126,7 +126,7 @@ This is privacy by construction rather than by policy: the captured file contain
 
 ### Why `net8.0` and `net10.0` only, for now
 
-`netstandard2.0` reaches further, but pins the package to EF Core 3.1 — the last netstandard-targeting release. Multi-targeting across EF Core majors doubles the test matrix for a .NET Framework audience that may not exist for this library.
+`netstandard2.0` reaches further, but pins the package to EF Core 3.1, the last netstandard-targeting release. Multi-targeting across EF Core majors doubles the test matrix for a .NET Framework audience that may not exist for this library.
 
 The cheap path is to wait for someone to open an issue asking. Adding a target later is easy; supporting one nobody uses is not.
 
@@ -134,19 +134,19 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 
 ## Roadmap
 
-**v1 — the core**
+**v1: the core**
 Model reading, dependency graph, nullable cycle resolution, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`.
 
-**v2 — depth**
+**v2: depth**
 CLI as a `dotnet tool`, bulk insert with equivalence test, composite keys and FKs, TPH/TPT/TPC, query filters, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
 
-**v3 — control**
+**v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
 
-**v4 — coverage and shape**
+**v4: coverage and shape**
 Coverage mode. Production shape capture and apply.
 
-**v5 — refinements**
+**v5: refinements**
 Dirty data mode (accents, trailing whitespace, inconsistent casing). xUnit and Testcontainers integration. A Roslyn analyzer flagging unseedable models at compile time. First-class pt-BR locale with valid CPF, CNPJ and postal codes. `netstandard2.0`, if asked for.
 
 ### Explicitly out of scope

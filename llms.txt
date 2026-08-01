@@ -2,7 +2,7 @@
 
 > Automatically seeds a database from an Entity Framework Core model. Reads the `DbContext` model, works out insertion order from foreign keys, resolves cycles, infers what each property means from its name, and writes referentially valid rows with realistic statistical distribution. Deterministic: same seed produces the same data.
 
-Unlike every other EF Core seeder, nothing is declared by hand — no CSV files, no factory classes, no priority attributes, no JSON configuration. The model is the specification.
+Unlike every other EF Core seeder, nothing is declared by hand, no CSV files, no factory classes, no priority attributes, no JSON configuration. The model is the specification.
 
 - Package: `EFCore.AutoSeed` (library), `EFCore.AutoSeed.Cli` (dotnet tool)
 - Targets: `net8.0`, `net10.0`
@@ -70,7 +70,7 @@ autoseed apply   --shape shape.json --to "<connection>"
 
 ## Common mistakes when using this library
 
-- Do not write a factory or seeder class. There is nothing to declare — call `AutoSeedAsync` on the context.
+- Do not write a factory or seeder class. There is nothing to declare: call `AutoSeedAsync` on the context.
 - Do not order entities manually. The library derives order from foreign keys.
 - Do not use it to anonymise production data. It is not a masking tool. Use `capture`/`apply` to reproduce production *shape* with synthetic data.
 - Do not omit the seed if the result must be reproducible in tests.
@@ -83,6 +83,6 @@ autoseed apply   --shape shape.json --to "<connection>"
 
 ## Documentation
 
-- README: https://github.com/USER/efcore-autoseed/blob/main/README.md
-- Architecture and design decisions: https://github.com/USER/efcore-autoseed/blob/main/ARCHITECTURE.md
-- Examples: https://github.com/USER/efcore-autoseed/tree/main/examples
+- README: https://github.com/danellalc/efcore-autoseed/blob/main/README.md
+- Architecture and design decisions: https://github.com/danellalc/efcore-autoseed/blob/main/ARCHITECTURE.md
+- Examples: https://github.com/danellalc/efcore-autoseed/tree/main/examples
