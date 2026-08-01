@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AutoSeed.Cli/AutoSeed.Cli.csproj" />
+    <Project Path="src/AutoSeed.Core/AutoSeed.Core.csproj" />
+    <Project Path="src/AutoSeed.Coverage/AutoSeed.Coverage.csproj" />
+    <Project Path="src/AutoSeed.Distributions/AutoSeed.Distributions.csproj" />
+    <Project Path="src/AutoSeed.Inference/AutoSeed.Inference.csproj" />
+    <Project Path="src/AutoSeed.Providers/AutoSeed.Providers.csproj" />
+    <Project Path="src/AutoSeed.Shape/AutoSeed.Shape.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AutoSeed.Benchmarks/AutoSeed.Benchmarks.csproj" />
+    <Project Path="tests/AutoSeed.IntegrationTests/AutoSeed.IntegrationTests.csproj" />
+    <Project Path="tests/AutoSeed.PropertyTests/AutoSeed.PropertyTests.csproj" />
+    <Project Path="tests/AutoSeed.SchemaTests/AutoSeed.SchemaTests.csproj" />
+    <Project Path="tests/AutoSeed.UnitTests/AutoSeed.UnitTests.csproj" />
+  </Folder>
+</Solution>

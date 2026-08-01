@@ -1,0 +1,88 @@
+# EFCore.AutoSeed
+
+> Automatically seeds a database from an Entity Framework Core model. Reads the `DbContext` model, works out insertion order from foreign keys, resolves cycles, infers what each property means from its name, and writes referentially valid rows with realistic statistical distribution. Deterministic: same seed produces the same data.
+
+Unlike every other EF Core seeder, nothing is declared by hand — no CSV files, no factory classes, no priority attributes, no JSON configuration. The model is the specification.
+
+- Package: `EFCore.AutoSeed` (library), `EFCore.AutoSeed.Cli` (dotnet tool)
+- Targets: `net8.0`, `net10.0`
+- Databases: SQL Server, PostgreSQL
+- License: MIT
+
+## Install
+
+```bash
+dotnet add package EFCore.AutoSeed
+```
+
+## Primary API
+
+```csharp
+using EFCore.AutoSeed;
+
+// Seed 1.000 root rows with a fixed seed. Related entities scale from relationships.
+await db.AutoSeedAsync(seed: 42, scale: 1_000);
+
+// Smallest dataset that exercises every enum, subtype, nullable state and cardinality edge.
+await db.AutoSeedCoverageAsync();
+
+// Print the plan without writing anything.
+var plan = await db.AutoSeedExplainAsync(seed: 42, scale: 1_000);
+```
+
+`AutoSeedAsync` returns an `AutoSeedResult` with per-entity row counts and the resolved insertion order.
+
+All public async methods accept a `CancellationToken`.
+
+## Options
+
+```csharp
+await db.AutoSeedAsync(new AutoSeedOptions
+{
+    Seed = 42,
+    Scale = 1_000,
+    Locale = "pt_BR",
+    Mode = SeedMode.Fidelity,        // or SeedMode.Fast for bulk copy
+    Distribution = DistributionShape.LongTail,
+    RespectQueryFilters = true
+});
+```
+
+## CLI
+
+```bash
+dotnet tool install -g EFCore.AutoSeed.Cli
+
+autoseed seed    --context MyDbContext --seed 42 --scale 1000
+autoseed explain --context MyDbContext
+autoseed capture --from "<connection>" --out shape.json   # statistics only, never reads rows
+autoseed apply   --shape shape.json --to "<connection>"
+```
+
+## Guarantees
+
+- Every generated foreign key references a row that exists.
+- Same seed produces byte-identical data, across runs and machines.
+- Owned types are written as columns, not tables.
+- Value converters are respected.
+- Global query filters are respected: most rows are visible to the application.
+- Unsatisfiable models throw `AutoSeedCycleException` naming the entities, rather than letting the database throw.
+
+## Common mistakes when using this library
+
+- Do not write a factory or seeder class. There is nothing to declare — call `AutoSeedAsync` on the context.
+- Do not order entities manually. The library derives order from foreign keys.
+- Do not use it to anonymise production data. It is not a masking tool. Use `capture`/`apply` to reproduce production *shape* with synthetic data.
+- Do not omit the seed if the result must be reproducible in tests.
+
+## Not supported
+
+- ORMs other than EF Core.
+- Databases other than SQL Server and PostgreSQL.
+- `netstandard2.0`, `net45` and older. EF Core does not exist below .NET Framework 4.6.1, and current EF Core majors require .NET 8+.
+
+## Documentation
+
+- README: https://github.com/USER/efcore-autoseed/blob/main/README.md
+- Architecture and design decisions: https://github.com/USER/efcore-autoseed/blob/main/ARCHITECTURE.md
+- Examples: https://github.com/USER/efcore-autoseed/tree/main/examples

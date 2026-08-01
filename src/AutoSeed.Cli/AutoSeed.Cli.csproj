@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackageId>EFCore.AutoSeed.Cli</PackageId>
+    <Description>Command-line tool for EFCore.AutoSeed: explain, capture and apply.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" />
+    <ProjectReference Include="..\AutoSeed.Inference\AutoSeed.Inference.csproj" />
+    <ProjectReference Include="..\AutoSeed.Distributions\AutoSeed.Distributions.csproj" />
+    <ProjectReference Include="..\AutoSeed.Coverage\AutoSeed.Coverage.csproj" />
+    <ProjectReference Include="..\AutoSeed.Shape\AutoSeed.Shape.csproj" />
+    <ProjectReference Include="..\AutoSeed.Providers\AutoSeed.Providers.csproj" />
+  </ItemGroup>
+
+</Project>
