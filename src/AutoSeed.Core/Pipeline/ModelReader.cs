@@ -15,6 +15,7 @@ public sealed class ModelReader
     /// </summary>
     /// <param name="model">The finalized model of the <see cref="DbContext"/> to seed.</param>
     /// <returns>The seedable entity types, their dependencies, and what was excluded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is <see langword="null"/>.</exception>
     public ModelReadResult Read(IModel model)
     {
         ArgumentNullException.ThrowIfNull(model);

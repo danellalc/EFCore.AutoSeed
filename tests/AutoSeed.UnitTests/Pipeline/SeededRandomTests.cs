@@ -51,6 +51,23 @@ public sealed class SeededRandomTests
     }
 
     [Fact]
+    public void Derive_ChainedStringSegments_DoNotCollideWithTheirConcatenation()
+    {
+        SeededRandom chained = SeededRandom.FromRootSeed(42).Derive("Cust").Derive("omer");
+        SeededRandom concatenated = SeededRandom.FromRootSeed(42).Derive("Customer");
+
+        Assert.NotEqual(chained.NextDouble(), concatenated.NextDouble());
+    }
+
+    [Fact]
+    public void FromRootSeed_ProducesTheSamePinnedValueForAFixedSeedAndPath()
+    {
+        SeededRandom random = SeededRandom.FromRootSeed(42).Derive("Customer").Derive(7).Derive("Email");
+
+        Assert.Equal(0.92564584171662379, random.NextDouble(), precision: 12);
+    }
+
+    [Fact]
     public void NextBoolean_ReturnsBothValuesAcrossManyDraws()
     {
         SeededRandom random = SeededRandom.FromRootSeed(42);

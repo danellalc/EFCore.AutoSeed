@@ -49,8 +49,55 @@ public sealed class PipelineTests
         UnresolvableCycleException exception = Assert.Throws<UnresolvableCycleException>(
             () => new CycleResolver().Resolve(read.EntityTypes, read.Edges));
 
-        Assert.Contains(exception.EntityTypeNames, name => name.Contains("CycleLeft"));
-        Assert.Contains(exception.EntityTypeNames, name => name.Contains("CycleRight"));
+        IReadOnlyList<string> cycle = Assert.Single(exception.Cycles);
+        Assert.Contains(cycle, name => name.Contains("CycleLeft"));
+        Assert.Contains(cycle, name => name.Contains("CycleRight"));
+    }
+
+    [Fact]
+    public void EntityDownstreamOfARequiredCycle_IsNotReportedAsPartOfTheCycle()
+    {
+        using DownstreamOfCycleContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+
+        UnresolvableCycleException exception = Assert.Throws<UnresolvableCycleException>(
+            () => new CycleResolver().Resolve(read.EntityTypes, read.Edges));
+
+        IReadOnlyList<string> cycle = Assert.Single(exception.Cycles);
+        Assert.Contains(cycle, name => name.Contains("LoopA"));
+        Assert.Contains(cycle, name => name.Contains("LoopB"));
+        Assert.DoesNotContain(cycle, name => name.Contains("Downstream"));
+    }
+
+    [Fact]
+    public void TwoUnrelatedRequiredCycles_AreReportedAsSeparateCycles()
+    {
+        using DisjointCyclesContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+
+        UnresolvableCycleException exception = Assert.Throws<UnresolvableCycleException>(
+            () => new CycleResolver().Resolve(read.EntityTypes, read.Edges));
+
+        Assert.Equal(2, exception.Cycles.Count);
+        Assert.Contains(exception.Cycles, cycle => cycle.Any(name => name.Contains("PairOne")));
+        Assert.Contains(exception.Cycles, cycle => cycle.Any(name => name.Contains("PairTwo")));
+        Assert.DoesNotContain(exception.Cycles, cycle =>
+            cycle.Any(name => name.Contains("PairOne")) && cycle.Any(name => name.Contains("PairTwo")));
+    }
+
+    [Fact]
+    public void MultipleNullableCandidatesInACycle_ResolveTheSameWayEveryTime()
+    {
+        using MultiNullableCandidateCycleContext firstContext = new();
+        ModelReadResult firstRead = new ModelReader().Read(firstContext.Model);
+        IReadOnlyList<IEntityType> firstOrder = new CycleResolver().Resolve(firstRead.EntityTypes, firstRead.Edges);
+
+        using MultiNullableCandidateCycleContext secondContext = new();
+        ModelReadResult secondRead = new ModelReader().Read(secondContext.Model);
+        IReadOnlyList<IEntityType> secondOrder = new CycleResolver().Resolve(secondRead.EntityTypes, secondRead.Edges);
+
+        Assert.Equal(["TriangleX", "TriangleY", "TriangleZ"], firstOrder.Select(ShortName).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal(firstOrder.Select(ShortName), secondOrder.Select(ShortName));
     }
 
     [Fact]

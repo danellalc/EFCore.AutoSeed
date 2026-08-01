@@ -16,6 +16,7 @@ public sealed class DependencyGraph
     /// </summary>
     /// <param name="entityTypes">Every node in the graph.</param>
     /// <param name="edges">Every dependency between two of <paramref name="entityTypes"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> or <paramref name="edges"/> is <see langword="null"/>.</exception>
     public DependencyGraph(IReadOnlyList<IEntityType> entityTypes, IReadOnlyList<GraphEdge> edges)
     {
         ArgumentNullException.ThrowIfNull(entityTypes);

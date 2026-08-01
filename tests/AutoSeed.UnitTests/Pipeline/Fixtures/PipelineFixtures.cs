@@ -179,3 +179,125 @@ public sealed class AuditLogEntry
 {
     public string Message { get; set; } = "";
 }
+
+public sealed class DownstreamOfCycleContext : DbContext
+{
+    public DbSet<LoopA> LoopAs => Set<LoopA>();
+    public DbSet<LoopB> LoopBs => Set<LoopB>();
+    public DbSet<Downstream> Downstreams => Set<Downstream>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<LoopA>().HasOne(a => a.B).WithMany().HasForeignKey(a => a.BId).IsRequired();
+        modelBuilder.Entity<LoopB>().HasOne(b => b.A).WithMany().HasForeignKey(b => b.AId).IsRequired();
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(DownstreamOfCycleContext));
+}
+
+public sealed class LoopA
+{
+    public int Id { get; set; }
+    public int BId { get; set; }
+    public LoopB B { get; set; } = null!;
+}
+
+public sealed class LoopB
+{
+    public int Id { get; set; }
+    public int AId { get; set; }
+    public LoopA A { get; set; } = null!;
+}
+
+public sealed class Downstream
+{
+    public int Id { get; set; }
+    public int LoopBId { get; set; }
+    public LoopB LoopB { get; set; } = null!;
+}
+
+public sealed class DisjointCyclesContext : DbContext
+{
+    public DbSet<PairOneLeft> PairOneLefts => Set<PairOneLeft>();
+    public DbSet<PairOneRight> PairOneRights => Set<PairOneRight>();
+    public DbSet<PairTwoLeft> PairTwoLefts => Set<PairTwoLeft>();
+    public DbSet<PairTwoRight> PairTwoRights => Set<PairTwoRight>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PairOneLeft>().HasOne(left => left.Right).WithMany().HasForeignKey(left => left.RightId).IsRequired();
+        modelBuilder.Entity<PairOneRight>().HasOne(right => right.Left).WithMany().HasForeignKey(right => right.LeftId).IsRequired();
+        modelBuilder.Entity<PairTwoLeft>().HasOne(left => left.Right).WithMany().HasForeignKey(left => left.RightId).IsRequired();
+        modelBuilder.Entity<PairTwoRight>().HasOne(right => right.Left).WithMany().HasForeignKey(right => right.LeftId).IsRequired();
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(DisjointCyclesContext));
+}
+
+public sealed class PairOneLeft
+{
+    public int Id { get; set; }
+    public int RightId { get; set; }
+    public PairOneRight Right { get; set; } = null!;
+}
+
+public sealed class PairOneRight
+{
+    public int Id { get; set; }
+    public int LeftId { get; set; }
+    public PairOneLeft Left { get; set; } = null!;
+}
+
+public sealed class PairTwoLeft
+{
+    public int Id { get; set; }
+    public int RightId { get; set; }
+    public PairTwoRight Right { get; set; } = null!;
+}
+
+public sealed class PairTwoRight
+{
+    public int Id { get; set; }
+    public int LeftId { get; set; }
+    public PairTwoLeft Left { get; set; } = null!;
+}
+
+public sealed class MultiNullableCandidateCycleContext : DbContext
+{
+    public DbSet<TriangleX> TriangleXs => Set<TriangleX>();
+    public DbSet<TriangleY> TriangleYs => Set<TriangleY>();
+    public DbSet<TriangleZ> TriangleZs => Set<TriangleZ>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TriangleX>().HasOne(x => x.Y).WithMany().HasForeignKey(x => x.YId).IsRequired(false);
+        modelBuilder.Entity<TriangleY>().HasOne(y => y.Z).WithMany().HasForeignKey(y => y.ZId).IsRequired(false);
+        modelBuilder.Entity<TriangleZ>().HasOne(z => z.X).WithMany().HasForeignKey(z => z.XId).IsRequired();
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(MultiNullableCandidateCycleContext));
+}
+
+public sealed class TriangleX
+{
+    public int Id { get; set; }
+    public int? YId { get; set; }
+    public TriangleY? Y { get; set; }
+}
+
+public sealed class TriangleY
+{
+    public int Id { get; set; }
+    public int? ZId { get; set; }
+    public TriangleZ? Z { get; set; }
+}
+
+public sealed class TriangleZ
+{
+    public int Id { get; set; }
+    public int XId { get; set; }
+    public TriangleX X { get; set; } = null!;
+}
