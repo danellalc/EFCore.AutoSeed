@@ -2,8 +2,10 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <IsPackable>true</IsPackable>
     <PackageId>EFCore.AutoSeed.Cli</PackageId>
     <Description>Command-line tool for EFCore.AutoSeed: explain, capture and apply.</Description>
+    <RootNamespace>EFCore.AutoSeed.Cli</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
