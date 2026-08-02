@@ -33,7 +33,7 @@ public sealed class RowValueGenerator
     /// </param>
     /// <returns>The generated values, keyed by property name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entityType"/> or <paramref name="rowRandom"/> is <see langword="null"/>.</exception>
-    public IReadOnlyDictionary<string, object> GenerateRow(IEntityType entityType, SeededRandom rowRandom)
+    public Dictionary<string, object> GenerateRow(IEntityType entityType, SeededRandom rowRandom)
     {
         ArgumentNullException.ThrowIfNull(entityType);
         ArgumentNullException.ThrowIfNull(rowRandom);

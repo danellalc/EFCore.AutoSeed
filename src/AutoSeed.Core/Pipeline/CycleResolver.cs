@@ -16,17 +16,18 @@ public sealed class CycleResolver
     /// </summary>
     /// <param name="entityTypes">Every entity type to order.</param>
     /// <param name="edges">Every dependency between two of <paramref name="entityTypes"/>.</param>
-    /// <returns>The full insertion order.</returns>
+    /// <returns>The full insertion order, plus every foreign key deferred to make it possible.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> or <paramref name="edges"/> is <see langword="null"/>.</exception>
     /// <exception cref="UnresolvableCycleException">
     /// The graph contains one or more cycles made entirely of required foreign keys.
     /// </exception>
-    public IReadOnlyList<IEntityType> Resolve(IReadOnlyList<IEntityType> entityTypes, IReadOnlyList<GraphEdge> edges)
+    public CycleResolution Resolve(IReadOnlyList<IEntityType> entityTypes, IReadOnlyList<GraphEdge> edges)
     {
         ArgumentNullException.ThrowIfNull(entityTypes);
         ArgumentNullException.ThrowIfNull(edges);
 
         List<GraphEdge> activeEdges = [.. edges];
+        List<GraphEdge> deferredEdges = [];
 
         while (true)
         {
@@ -35,7 +36,7 @@ public sealed class CycleResolver
 
             if (sortResult.Unordered.Count == 0)
             {
-                return sortResult.Order;
+                return new CycleResolution(sortResult.Order, deferredEdges);
             }
 
             HashSet<IEntityType> stuck = [.. sortResult.Unordered];
@@ -50,6 +51,7 @@ public sealed class CycleResolver
             if (breakable is not null)
             {
                 activeEdges.Remove(breakable);
+                deferredEdges.Add(breakable);
                 continue;
             }
 

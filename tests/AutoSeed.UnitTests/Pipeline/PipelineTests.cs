@@ -13,7 +13,7 @@ public sealed class PipelineTests
         using LinearChainContext context = new();
         ModelReadResult read = new ModelReader().Read(context.Model);
 
-        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
 
         Assert.Equal(["Customer", "Order", "OrderItem"], order.Select(ShortName));
     }
@@ -24,7 +24,7 @@ public sealed class PipelineTests
         using DiamondContext context = new();
         ModelReadResult read = new ModelReader().Read(context.Model);
 
-        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
 
         Assert.Equal(["Root", "Left", "Right", "Merge"], order.Select(ShortName));
     }
@@ -35,7 +35,7 @@ public sealed class PipelineTests
         using NullableSelfCycleContext context = new();
         ModelReadResult read = new ModelReader().Read(context.Model);
 
-        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
 
         Assert.Equal(["Employee"], order.Select(ShortName));
     }
@@ -90,11 +90,11 @@ public sealed class PipelineTests
     {
         using MultiNullableCandidateCycleContext firstContext = new();
         ModelReadResult firstRead = new ModelReader().Read(firstContext.Model);
-        IReadOnlyList<IEntityType> firstOrder = new CycleResolver().Resolve(firstRead.EntityTypes, firstRead.Edges);
+        IReadOnlyList<IEntityType> firstOrder = new CycleResolver().Resolve(firstRead.EntityTypes, firstRead.Edges).Order;
 
         using MultiNullableCandidateCycleContext secondContext = new();
         ModelReadResult secondRead = new ModelReader().Read(secondContext.Model);
-        IReadOnlyList<IEntityType> secondOrder = new CycleResolver().Resolve(secondRead.EntityTypes, secondRead.Edges);
+        IReadOnlyList<IEntityType> secondOrder = new CycleResolver().Resolve(secondRead.EntityTypes, secondRead.Edges).Order;
 
         Assert.Equal(["TriangleX", "TriangleY", "TriangleZ"], firstOrder.Select(ShortName).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Equal(firstOrder.Select(ShortName), secondOrder.Select(ShortName));
@@ -106,7 +106,7 @@ public sealed class PipelineTests
         using UnrelatedEntitiesContext context = new();
         ModelReadResult read = new ModelReader().Read(context.Model);
 
-        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
 
         Assert.Equal(["Apple", "Mango", "Zebra"], order.Select(ShortName));
     }

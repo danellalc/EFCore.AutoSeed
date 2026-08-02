@@ -1,0 +1,246 @@
+using EFCore.AutoSeed.Exceptions;
+using EFCore.AutoSeed.Pipeline;
+using EFCore.AutoSeed.UnitTests.Pipeline.Fixtures;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+
+namespace EFCore.AutoSeed.UnitTests.Pipeline;
+
+public sealed class PersistenceTests
+{
+    [Fact]
+    public async Task InsertAsync_WithLinearChain_InsertsRowsWithReferentialIntegrity()
+    {
+        using IsolatedLinearChainContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 5, SeededRandom.FromRootSeed(42));
+
+        IReadOnlyDictionary<string, int> result = await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(42), CancellationToken.None);
+
+        List<Fixtures.Customer> customers = await context.Customers.ToListAsync();
+        List<Fixtures.Order> orders = await context.Orders.ToListAsync();
+        List<OrderItem> orderItems = await context.OrderItems.ToListAsync();
+
+        Assert.Equal(RowCount(plan, "Customer"), customers.Count);
+        Assert.Equal(RowCount(plan, "Order"), orders.Count);
+        Assert.Equal(RowCount(plan, "OrderItem"), orderItems.Count);
+
+        Assert.Equal(customers.Count, ResultValue(result, "Customer"));
+        Assert.Equal(orders.Count, ResultValue(result, "Order"));
+        Assert.Equal(orderItems.Count, ResultValue(result, "OrderItem"));
+
+        HashSet<int> customerIds = [.. customers.Select(customer => customer.Id)];
+        Assert.All(orders, order => Assert.Contains(order.CustomerId, customerIds));
+
+        HashSet<int> orderIds = [.. orders.Select(order => order.Id)];
+        Assert.All(orderItems, item => Assert.Contains(item.OrderId, orderIds));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithDiamond_AssignsBothPrincipalsToAlreadyInsertedRows()
+    {
+        using IsolatedDiamondContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 15, SeededRandom.FromRootSeed(7));
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(7), CancellationToken.None);
+
+        List<Left> lefts = await context.Lefts.ToListAsync();
+        List<Right> rights = await context.Rights.ToListAsync();
+        List<Merge> merges = await context.Merges.ToListAsync();
+
+        HashSet<int> leftIds = [.. lefts.Select(left => left.Id)];
+        HashSet<int> rightIds = [.. rights.Select(right => right.Id)];
+
+        Assert.NotEmpty(merges);
+        Assert.All(merges, merge =>
+        {
+            Assert.Contains(merge.LeftId, leftIds);
+            Assert.Contains(merge.RightId, rightIds);
+        });
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithNullableSelfCycleAndManyEmployees_AssignsAManagerFromADifferentEmployee()
+    {
+        using IsolatedNullableSelfCycleContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        Assert.Single(resolution.DeferredEdges);
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 10, SeededRandom.FromRootSeed(3));
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(3), CancellationToken.None);
+
+        List<Employee> employees = await context.Employees.ToListAsync();
+
+        Assert.True(employees.Count > 1);
+        Assert.All(employees, employee => Assert.True(employee.ManagerId is not null && employee.ManagerId != employee.Id));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithNullableSelfCycleAndOneEmployee_LeavesManagerIdNull()
+    {
+        using IsolatedNullableSelfCycleContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 1, SeededRandom.FromRootSeed(3));
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(3), CancellationToken.None);
+
+        Employee employee = Assert.Single(await context.Employees.ToListAsync());
+        Assert.Null(employee.ManagerId);
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithTheSameSeed_ProducesIdenticalRowCountsAndForeignKeys()
+    {
+        (IReadOnlyDictionary<string, int> firstCounts, List<Fixtures.Order> firstOrders) = await RunLinearChainPipelineAsync(UniqueDatabaseName());
+        (IReadOnlyDictionary<string, int> secondCounts, List<Fixtures.Order> secondOrders) = await RunLinearChainPipelineAsync(UniqueDatabaseName());
+
+        Assert.Equal(firstCounts.Count, secondCounts.Count);
+        foreach (KeyValuePair<string, int> entry in firstCounts)
+        {
+            Assert.Equal(entry.Value, secondCounts[entry.Key]);
+        }
+
+        Assert.Equal(firstOrders.Count, secondOrders.Count);
+        Assert.Equal(
+            firstOrders.Select(order => order.CustomerId),
+            secondOrders.Select(order => order.CustomerId));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithAnEntityTypeWithNoParameterlessConstructor_ThrowsUnsupportedEntityTypeException()
+    {
+        using IsolatedNoParameterlessConstructorContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 3, SeededRandom.FromRootSeed(1));
+
+        UnsupportedEntityTypeException exception = await Assert.ThrowsAsync<UnsupportedEntityTypeException>(() => new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None));
+
+        Assert.Contains("NoParameterlessConstructorEntity", exception.EntityTypeName);
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithARequiredPrincipalThatHasZeroRows_ThrowsUnsupportedEntityTypeException()
+    {
+        using IsolatedLinearChainContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        List<EntityGenerationPlan> plan = [.. resolution.Order.Select(entityType => entityType.Name.EndsWith("Customer", StringComparison.Ordinal)
+            ? new EntityGenerationPlan(entityType, 0, null, null)
+            : new EntityGenerationPlan(entityType, 3, null, null))];
+
+        UnsupportedEntityTypeException exception = await Assert.ThrowsAsync<UnsupportedEntityTypeException>(() => new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None));
+
+        Assert.Contains("Customer", exception.Message);
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithNullArguments_ThrowsArgumentNullException()
+    {
+        using IsolatedLinearChainContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 1, SeededRandom.FromRootSeed(1));
+        SeededRandom random = SeededRandom.FromRootSeed(1);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            null!, plan, read.Edges, resolution.DeferredEdges, GenerateRow, random, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            context, null!, read.Edges, resolution.DeferredEdges, GenerateRow, random, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            context, plan, null!, resolution.DeferredEdges, GenerateRow, random, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            context, plan, read.Edges, null!, GenerateRow, random, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, null!, random, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, null!, CancellationToken.None));
+    }
+
+    private static async Task<(IReadOnlyDictionary<string, int> Counts, List<Fixtures.Order> Orders)> RunLinearChainPipelineAsync(string databaseName)
+    {
+        using IsolatedLinearChainContext context = new(databaseName);
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 8, SeededRandom.FromRootSeed(99));
+
+        IReadOnlyDictionary<string, int> counts = await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(99), CancellationToken.None);
+
+        List<Fixtures.Order> orders = await context.Orders.OrderBy(order => order.Id).ToListAsync();
+        return (counts, orders);
+    }
+
+    private static Dictionary<string, object> GenerateRow(IEntityType entityType, SeededRandom random) => [];
+
+    private static string UniqueDatabaseName() => Guid.NewGuid().ToString("N");
+
+    private static int RowCount(IReadOnlyList<EntityGenerationPlan> plan, string shortName) =>
+        Assert.Single(plan, entry => entry.EntityType.Name.EndsWith(shortName, StringComparison.Ordinal)).RowCount;
+
+    private static int ResultValue(IReadOnlyDictionary<string, int> result, string shortName) =>
+        Assert.Single(result, entry => entry.Key.EndsWith(shortName, StringComparison.Ordinal)).Value;
+
+    private sealed class IsolatedLinearChainContext(string databaseName) : DbContext
+    {
+        public DbSet<Fixtures.Customer> Customers => Set<Fixtures.Customer>();
+        public DbSet<Fixtures.Order> Orders => Set<Fixtures.Order>();
+        public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class IsolatedDiamondContext(string databaseName) : DbContext
+    {
+        public DbSet<Root> Roots => Set<Root>();
+        public DbSet<Left> Lefts => Set<Left>();
+        public DbSet<Right> Rights => Set<Right>();
+        public DbSet<Merge> Merges => Set<Merge>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class IsolatedNullableSelfCycleContext(string databaseName) : DbContext
+    {
+        public DbSet<Employee> Employees => Set<Employee>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class IsolatedNoParameterlessConstructorContext(string databaseName) : DbContext
+    {
+        public DbSet<NoParameterlessConstructorEntity> Entities => Set<NoParameterlessConstructorEntity>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class NoParameterlessConstructorEntity
+    {
+        public NoParameterlessConstructorEntity(string name)
+        {
+            Name = name;
+        }
+
+        public int Id { get; set; }
+
+        public string Name { get; private set; }
+    }
+}

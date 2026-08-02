@@ -16,8 +16,8 @@ public sealed class DependencyOrderPropertyTests
         Random shuffler = new(shuffleSeed);
         List<IEntityType> shuffledEntityTypes = [.. read.EntityTypes.OrderBy(_ => shuffler.Next())];
 
-        IReadOnlyList<IEntityType> canonicalOrder = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
-        IReadOnlyList<IEntityType> shuffledOrder = new CycleResolver().Resolve(shuffledEntityTypes, read.Edges);
+        IReadOnlyList<IEntityType> canonicalOrder = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        IReadOnlyList<IEntityType> shuffledOrder = new CycleResolver().Resolve(shuffledEntityTypes, read.Edges).Order;
 
         bool sameOrderRegardlessOfInput = canonicalOrder.SequenceEqual(shuffledOrder);
 
