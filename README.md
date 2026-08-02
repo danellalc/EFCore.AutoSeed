@@ -113,7 +113,7 @@ Supported EF Core versions: the two most recent majors.
 
 Property-based tests assert that for **any** model and **any** seed, every foreign key points at an existing row and no constraint is violated. They run on every commit.
 
-Also tested against N real, public EF Core schemas.
+Also tested against 4 real, public schemas: Northwind, Chinook, Contoso University and a lite AdventureWorks OLTP subset. Composite keys, self-references, shared-primary-key one-to-ones and many-to-many join tables included.
 
 ## Compared to
 

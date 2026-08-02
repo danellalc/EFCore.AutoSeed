@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/CustomerOrders/CustomerOrders.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/AutoSeed.Cli/AutoSeed.Cli.csproj" />
     <Project Path="src/AutoSeed.Core/AutoSeed.Core.csproj" />
