@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\AutoSeed.Coverage\AutoSeed.Coverage.csproj" />
     <ProjectReference Include="..\..\src\AutoSeed.Shape\AutoSeed.Shape.csproj" />
     <ProjectReference Include="..\..\src\AutoSeed.Providers\AutoSeed.Providers.csproj" />
+    <ProjectReference Include="..\..\src\AutoSeed.Cli\AutoSeed.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
