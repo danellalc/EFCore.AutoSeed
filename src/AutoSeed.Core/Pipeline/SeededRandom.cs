@@ -13,8 +13,16 @@ public sealed class SeededRandom
     private SeededRandom(ulong state)
     {
         _state = state;
-        _random = new Random(unchecked((int)state));
+        Seed = unchecked((int)state);
+        _random = new Random(Seed);
     }
+
+    /// <summary>
+    /// The derived seed for this instance's path, as a plain <see cref="int"/>. Use this to seed
+    /// an external deterministic generator (for example Bogus's <c>Randomizer</c>) so that its
+    /// output is governed by the same hierarchical, positional derivation as everything else.
+    /// </summary>
+    public int Seed { get; }
 
     /// <summary>
     /// Creates the root <see cref="SeededRandom"/> for a seeding run.

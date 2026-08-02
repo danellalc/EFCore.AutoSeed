@@ -1,0 +1,39 @@
+using EFCore.AutoSeed.Pipeline;
+
+namespace EFCore.AutoSeed.Inference.Rules;
+
+internal static class TemporalHelpers
+{
+    internal static DateTime Between(SeededRandom random, DateTime start, DateTime end)
+    {
+        if (end <= start)
+        {
+            return start;
+        }
+
+        double fraction = random.NextDouble();
+        long ticks = (long)((end - start).Ticks * fraction);
+        return start.AddTicks(ticks);
+    }
+
+    internal static DateTime? FindSiblingDateTime(IReadOnlyDictionary<string, object> generatedValues, params ReadOnlySpan<string> nameSuffixes)
+    {
+        foreach (KeyValuePair<string, object> entry in generatedValues)
+        {
+            if (entry.Value is not DateTime dateTime)
+            {
+                continue;
+            }
+
+            foreach (string suffix in nameSuffixes)
+            {
+                if (entry.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return dateTime;
+                }
+            }
+        }
+
+        return null;
+    }
+}
