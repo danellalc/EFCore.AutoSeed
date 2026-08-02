@@ -67,6 +67,47 @@ public static class DbContextAutoSeedExtensions
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Works out what <see cref="AutoSeedAsync"/> would do for <paramref name="context"/> and
+    /// <paramref name="scale"/>, without writing anything.
+    /// </summary>
+    /// <param name="context">The context to plan for.</param>
+    /// <param name="seed">The seed the plan's cardinality draws derive from.</param>
+    /// <param name="scale">The row count for entity types with no required principal.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The insertion order, row counts, resolved cycles and skipped entity types.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
+    /// <exception cref="Exceptions.UnresolvableCycleException">
+    /// The model contains a dependency cycle made entirely of required foreign keys.
+    /// </exception>
+    public static Task<AutoSeedExplainResult> AutoSeedExplainAsync(
+        this DbContext context, long seed, int scale, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
+
+        Dictionary<string, int> rowCounts = plan.ToDictionary(entry => entry.EntityType.Name, entry => entry.RowCount);
+        Dictionary<string, IReadOnlyList<int>> childCounts = [];
+        foreach (EntityGenerationPlan entry in plan)
+        {
+            if (entry.ChildCountsByDriverRow is { } counts)
+            {
+                childCounts[entry.EntityType.Name] = counts;
+            }
+        }
+
+        return Task.FromResult(new AutoSeedExplainResult(resolution.Order, rowCounts, childCounts, read.SkippedEntityTypes, resolution.DeferredEdges));
+    }
+
     private static IReadOnlyList<IPropertyInferenceRule> BuildDefaultRules() =>
     [
         new NameInferenceRule(),
@@ -81,5 +122,6 @@ public static class DbContextAutoSeedExtensions
         new CreatedAtInferenceRule(ReferenceNow),
         new UpdatedAtInferenceRule(ReferenceNow),
         new DeletedAtInferenceRule(ReferenceNow),
+        new GenericTextInferenceRule(),
     ];
 }

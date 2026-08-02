@@ -77,6 +77,73 @@ public sealed class AutoSeedAsyncTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => context.AutoSeedAsync(seed: 1, scale: 0));
     }
 
+    [Fact]
+    public async Task AutoSeedExplainAsync_WritesNothingToTheDatabase()
+    {
+        using CustomerOrderContext context = NewContext();
+
+        AutoSeedExplainResult result = await context.AutoSeedExplainAsync(seed: 42, scale: 10);
+
+        Assert.Equal(2, result.Order.Count);
+        Assert.Equal(0, await context.Customers.CountAsync());
+        Assert.Equal(0, await context.Orders.CountAsync());
+    }
+
+    [Fact]
+    public async Task AutoSeedExplainAsync_RowCountsMatchWhatAutoSeedAsyncWouldActuallyWrite()
+    {
+        using CustomerOrderContext explainContext = NewContext();
+        using CustomerOrderContext seedContext = NewContext();
+
+        AutoSeedExplainResult explainResult = await explainContext.AutoSeedExplainAsync(seed: 42, scale: 10);
+        IReadOnlyDictionary<string, int> seedResult = await seedContext.AutoSeedAsync(seed: 42, scale: 10);
+
+        Assert.Equal(seedResult.Count, explainResult.RowCounts.Count);
+        foreach (KeyValuePair<string, int> entry in seedResult)
+        {
+            Assert.Equal(entry.Value, explainResult.RowCounts[entry.Key]);
+        }
+    }
+
+    [Fact]
+    public async Task AutoSeedExplainAsync_ReportsALongTailChildCountForOrder()
+    {
+        using CustomerOrderContext context = NewContext();
+
+        AutoSeedExplainResult result = await context.AutoSeedExplainAsync(seed: 42, scale: 10);
+
+        string orderKey = typeof(Order).FullName!;
+        Assert.True(result.ChildCountsByEntityType.ContainsKey(orderKey));
+        Assert.Equal(10, result.ChildCountsByEntityType[orderKey].Count);
+    }
+
+    [Fact]
+    public async Task ToReport_MentionsEveryEntityTypeAndItsRowCount()
+    {
+        using CustomerOrderContext context = NewContext();
+
+        AutoSeedExplainResult result = await context.AutoSeedExplainAsync(seed: 42, scale: 10);
+        string report = result.ToReport();
+
+        Assert.Contains("Customer", report);
+        Assert.Contains("Order", report);
+        Assert.Contains("rows", report);
+    }
+
+    [Fact]
+    public async Task AutoSeedExplainAsync_WithNullContext_ThrowsArgumentNullException()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(() => DbContextAutoSeedExtensions.AutoSeedExplainAsync(null!, seed: 1, scale: 10));
+    }
+
+    [Fact]
+    public async Task AutoSeedExplainAsync_WithNonPositiveScale_ThrowsArgumentOutOfRangeException()
+    {
+        using CustomerOrderContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => context.AutoSeedExplainAsync(seed: 1, scale: 0));
+    }
+
     private static CustomerOrderContext NewContext()
     {
         int id = Interlocked.Increment(ref _databaseCounter);

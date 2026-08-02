@@ -2,6 +2,7 @@ using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
 using EFCore.AutoSeed.UnitTests.Inference.Fixtures;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.UnitTests.Inference.Rules;
@@ -27,6 +28,47 @@ public sealed class SimpleStringRuleTests
     [Fact]
     public void IpAddress_CanInferAndProducesANonEmptyDeterministicValue() =>
         AssertMatchesAndIsDeterministic(new IpAddressInferenceRule(), "IpAddress");
+
+    [Fact]
+    public void GenericText_CanInferAndProducesANonEmptyDeterministicValue() =>
+        AssertMatchesAndIsDeterministic(new GenericTextInferenceRule(), "Nickname");
+
+    [Fact]
+    public void GenericText_DoesNotClaimForeignKeyProperties()
+    {
+        using StringForeignKeyContext context = new();
+        IEntityType entityType = context.Model.FindEntityType(typeof(Child))
+            ?? throw new InvalidOperationException("Child entity type not found.");
+        IProperty foreignKey = entityType.FindProperty(nameof(Child.ParentCode))
+            ?? throw new InvalidOperationException("ParentCode property not found.");
+
+        Assert.False(new GenericTextInferenceRule().CanInfer(foreignKey));
+    }
+
+    private sealed class StringForeignKeyContext : DbContext
+    {
+        public DbSet<Parent> Parents => Set<Parent>();
+        public DbSet<Child> Children => Set<Child>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(nameof(StringForeignKeyContext));
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+            modelBuilder.Entity<Parent>().HasKey(parent => parent.Code);
+    }
+
+    private sealed class Parent
+    {
+        public string Code { get; set; } = "";
+        public List<Child> Children { get; set; } = [];
+    }
+
+    private sealed class Child
+    {
+        public int Id { get; set; }
+        public string ParentCode { get; set; } = "";
+        public Parent Parent { get; set; } = null!;
+    }
 
     [Fact]
     public void Url_ProducesAValueShapedLikeAUrl()

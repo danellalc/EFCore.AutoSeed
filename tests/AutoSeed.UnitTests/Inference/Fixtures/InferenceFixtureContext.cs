@@ -41,6 +41,7 @@ public sealed class Person
     public string Url { get; set; } = "";
     public string Slug { get; set; } = "";
     public string IpAddress { get; set; } = "";
+    public string Nickname { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
