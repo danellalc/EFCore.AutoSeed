@@ -1,4 +1,5 @@
 using EFCore.AutoSeed.Pipeline;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.Inference.Rules;
@@ -14,7 +15,7 @@ public sealed class GenericTextInferenceRule : IPropertyInferenceRule
 
     /// <inheritdoc />
     public bool CanInfer(IProperty property) =>
-        property.ClrType == typeof(string) && !property.IsForeignKey();
+        property.ClrType == typeof(string) && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     /// <inheritdoc />
     public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)

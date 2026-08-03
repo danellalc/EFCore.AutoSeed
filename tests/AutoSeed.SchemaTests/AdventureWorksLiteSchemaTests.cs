@@ -38,6 +38,12 @@ public sealed class AdventureWorksLiteSchemaTests
 
         List<string> productNumbers = await context.Products.Select(product => product.ProductNumber).ToListAsync();
         Assert.Equal(productNumbers.Count, productNumbers.Distinct(StringComparer.Ordinal).Count());
+
+        List<int> orderQuantities = await context.SalesOrderDetails.Select(detail => detail.OrderQty).ToListAsync();
+        Assert.Contains(orderQuantities, quantity => quantity > 0);
+        List<bool> discontinuedFlags = await context.Products.Select(product => product.Discontinued).ToListAsync();
+        Assert.Contains(discontinuedFlags, flag => flag);
+        Assert.Contains(discontinuedFlags, flag => !flag);
     }
 
     [Fact]

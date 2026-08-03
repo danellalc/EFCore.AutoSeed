@@ -34,6 +34,13 @@ public sealed class NorthwindSchemaTests
         Assert.True(await context.OrderDetails.AnyAsync());
         List<Employee> employees = await context.Employees.ToListAsync();
         Assert.True(employees.Count <= 1 || employees.All(employee => employee.ManagerId != employee.Id));
+
+        List<Product> products = await context.Products.ToListAsync();
+        Assert.Contains(products, product => product.UnitsInStock > 0);
+        Assert.Contains(products, product => product.Discontinued);
+        Assert.Contains(products, product => !product.Discontinued);
+        List<int> quantities = await context.OrderDetails.Select(detail => detail.Quantity).ToListAsync();
+        Assert.Contains(quantities, quantity => quantity > 0);
     }
 
     [Fact]

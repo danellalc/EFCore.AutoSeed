@@ -40,6 +40,9 @@ public sealed class ChinookSchemaTests
 
         List<string> emails = await context.Customers.Select(customer => customer.Email).ToListAsync();
         Assert.Equal(emails.Count, emails.Distinct(StringComparer.Ordinal).Count());
+
+        List<int> durations = await context.Tracks.Select(track => track.Milliseconds).ToListAsync();
+        Assert.Contains(durations, duration => duration > 0);
     }
 
     [Fact]

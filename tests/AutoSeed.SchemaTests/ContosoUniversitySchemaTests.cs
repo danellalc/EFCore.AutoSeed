@@ -37,6 +37,9 @@ public sealed class ContosoUniversitySchemaTests
 
         List<string> departmentNames = await context.Departments.Select(department => department.Name).ToListAsync();
         Assert.Equal(departmentNames.Count, departmentNames.Distinct(StringComparer.Ordinal).Count());
+
+        List<Grade?> grades = await context.Enrollments.Select(enrollment => enrollment.Grade).ToListAsync();
+        Assert.Contains(grades, grade => grade is not null);
     }
 
     [Fact]

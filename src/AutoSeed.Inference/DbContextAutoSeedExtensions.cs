@@ -123,5 +123,9 @@ public static class DbContextAutoSeedExtensions
         new UpdatedAtInferenceRule(ReferenceNow),
         new DeletedAtInferenceRule(ReferenceNow),
         new GenericTextInferenceRule(),
+        new GenericNumberInferenceRule(),
+        new GenericBooleanInferenceRule(),
+        new GenericEnumInferenceRule(),
+        new GenericGuidInferenceRule(),
     ];
 }
