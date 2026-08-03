@@ -24,7 +24,10 @@ public sealed class RowValueGenerator
 
     /// <summary>
     /// Generates a value for every property of <paramref name="entityType"/> that at least one
-    /// rule recognizes. Properties no rule recognizes are simply absent from the result.
+    /// rule recognizes. Properties no rule recognizes are simply absent from the result. The
+    /// table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
+    /// the instance's actual CLR type during <c>SaveChanges</c>, and overwriting it with a
+    /// generated value breaks every query that filters by it on a real relational database.
     /// </summary>
     /// <param name="entityType">The entity type whose properties to generate values for.</param>
     /// <param name="rowRandom">
@@ -38,7 +41,10 @@ public sealed class RowValueGenerator
         ArgumentNullException.ThrowIfNull(entityType);
         ArgumentNullException.ThrowIfNull(rowRandom);
 
-        IReadOnlyList<IProperty> properties = [.. entityType.GetProperties().OrderBy(property => property.Name, StringComparer.Ordinal)];
+        IProperty? discriminatorProperty = entityType.FindDiscriminatorProperty();
+        IReadOnlyList<IProperty> properties = [.. entityType.GetProperties()
+            .Where(property => property != discriminatorProperty)
+            .OrderBy(property => property.Name, StringComparer.Ordinal)];
         Dictionary<string, object> values = [];
 
         foreach (IPropertyInferenceRule rule in _rulesByPriority)

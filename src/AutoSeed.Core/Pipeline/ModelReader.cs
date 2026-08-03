@@ -10,8 +10,9 @@ namespace EFCore.AutoSeed.Pipeline;
 public sealed class ModelReader
 {
     /// <summary>
-    /// Reads <paramref name="model"/>, keeping every entity type that is not owned and has a
-    /// primary key, and building a dependency edge for every foreign key between two of them.
+    /// Reads <paramref name="model"/>, keeping every entity type that is not owned, not abstract,
+    /// and has a primary key, and building a dependency edge for every foreign key between two of
+    /// them that is not itself an inheritance table-splitting link.
     /// </summary>
     /// <param name="model">The finalized model of the <see cref="DbContext"/> to seed.</param>
     /// <returns>The seedable entity types, their dependencies, and what was excluded.</returns>
@@ -27,6 +28,12 @@ public sealed class ModelReader
         {
             if (entityType.IsOwned())
             {
+                continue;
+            }
+
+            if (entityType.ClrType.IsAbstract)
+            {
+                skipped.Add(new SkippedEntityType(entityType.Name, "abstract type, cannot be instantiated"));
                 continue;
             }
 
@@ -46,6 +53,11 @@ public sealed class ModelReader
         {
             foreach (IForeignKey foreignKey in entityType.GetForeignKeys())
             {
+                if (IsInheritanceLinkingForeignKey(entityType, foreignKey))
+                {
+                    continue;
+                }
+
                 if (seedableSet.Contains(foreignKey.PrincipalEntityType))
                 {
                     edges.Add(new GraphEdge(foreignKey.PrincipalEntityType, entityType, foreignKey));
@@ -57,5 +69,27 @@ public sealed class ModelReader
             [.. seedable.OrderBy(entityType => entityType.Name, StringComparer.Ordinal)],
             edges,
             [.. skipped.OrderBy(entry => entry.EntityTypeName, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// A table-per-type entity type declares a foreign key to its own base type: SQL Server and
+    /// PostgreSQL need it to join the tables back together, but it is not a dependency between two
+    /// independent rows the way an ordinary required foreign key is. EF Core's own
+    /// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(System.Threading.CancellationToken)"/>
+    /// already assigns the same generated key to both tables' rows for a single inserted instance;
+    /// treating this as a real edge would make the base type's row a second, independently
+    /// generated one, which then collides with the shared key EF Core assigns.
+    /// </summary>
+    private static bool IsInheritanceLinkingForeignKey(IEntityType entityType, IForeignKey foreignKey)
+    {
+        for (IEntityType? baseType = entityType.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (foreignKey.PrincipalEntityType == baseType)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

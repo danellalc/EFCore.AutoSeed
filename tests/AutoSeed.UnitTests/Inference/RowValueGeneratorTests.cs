@@ -2,6 +2,7 @@ using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
 using EFCore.AutoSeed.UnitTests.Inference.Fixtures;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.UnitTests.Inference;
@@ -85,6 +86,45 @@ public sealed class RowValueGeneratorTests
     public void Constructor_WithNullRules_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new RowValueGenerator(null!));
+    }
+
+    [Fact]
+    public void GenerateRow_NeverGeneratesAValueForATableThatHierarchyDiscriminatorColumn()
+    {
+        using TphDiscriminatorContext context = new();
+        IEntityType employeeEntityType = context.Model.FindEntityType(typeof(DiscriminatorEmployee))
+            ?? throw new InvalidOperationException("DiscriminatorEmployee entity type not found.");
+        IEntityType managerEntityType = context.Model.FindEntityType(typeof(DiscriminatorManager))
+            ?? throw new InvalidOperationException("DiscriminatorManager entity type not found.");
+
+        RowValueGenerator generator = CreateGenerator();
+
+        IReadOnlyDictionary<string, object> employeeValues = generator.GenerateRow(employeeEntityType, SeededRandom.FromRootSeed(1));
+        IReadOnlyDictionary<string, object> managerValues = generator.GenerateRow(managerEntityType, SeededRandom.FromRootSeed(1));
+
+        string discriminatorPropertyName = employeeEntityType.FindDiscriminatorProperty()!.Name;
+        Assert.False(employeeValues.ContainsKey(discriminatorPropertyName));
+        Assert.False(managerValues.ContainsKey(discriminatorPropertyName));
+    }
+
+    private sealed class TphDiscriminatorContext : DbContext
+    {
+        public DbSet<DiscriminatorEmployee> Employees => Set<DiscriminatorEmployee>();
+        public DbSet<DiscriminatorManager> Managers => Set<DiscriminatorManager>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(nameof(TphDiscriminatorContext));
+    }
+
+    private class DiscriminatorEmployee
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    private sealed class DiscriminatorManager : DiscriminatorEmployee
+    {
+        public decimal Budget { get; set; }
     }
 
     private static RowValueGenerator CreateGenerator() => new(
