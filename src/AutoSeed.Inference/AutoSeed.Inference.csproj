@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\AutoSeed.Coverage\AutoSeed.Coverage.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AutoSeed.Distributions\AutoSeed.Distributions.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

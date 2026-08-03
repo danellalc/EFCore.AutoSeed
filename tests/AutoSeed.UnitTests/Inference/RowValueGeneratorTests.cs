@@ -23,7 +23,7 @@ public sealed class RowValueGeneratorTests
         [
             "FirstName", "LastName", "Email", "Cpf", "Cnpj", "PostalCode", "Phone",
             "Balance", "TinyPrice", "EqualScalePrice", "HugeTotal", "Url", "Slug", "IpAddress",
-            "CreatedAt", "UpdatedAt", "DeletedAt",
+            "CreatedAt", "UpdatedAt",
         ];
 
         foreach (string propertyName in expectedProperties)
@@ -58,11 +58,35 @@ public sealed class RowValueGeneratorTests
 
             DateTime createdAt = (DateTime)values["CreatedAt"];
             DateTime updatedAt = (DateTime)values["UpdatedAt"];
-            DateTime deletedAt = (DateTime)values["DeletedAt"];
 
             Assert.True(createdAt <= updatedAt, $"seed {seed}: CreatedAt after UpdatedAt.");
-            Assert.True(updatedAt <= deletedAt, $"seed {seed}: UpdatedAt after DeletedAt.");
+
+            if (values.TryGetValue("DeletedAt", out object? deletedAtValue))
+            {
+                Assert.True(updatedAt <= (DateTime)deletedAtValue, $"seed {seed}: UpdatedAt after DeletedAt.");
+            }
         }
+    }
+
+    [Fact]
+    public void GenerateRow_LeavesANullableNonForeignKeyPropertyAbsentOnSomeRowsButNotOthers()
+    {
+        RowValueGenerator generator = CreateGenerator();
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        int present = 0;
+        const int TotalSeeds = 200;
+        for (int seed = 0; seed < TotalSeeds; seed++)
+        {
+            IReadOnlyDictionary<string, object> values = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(seed));
+            if (values.ContainsKey("DeletedAt"))
+            {
+                present++;
+            }
+        }
+
+        Assert.True(present > TotalSeeds * 0.7, $"expected most of {TotalSeeds} rows to have DeletedAt, got {present}.");
+        Assert.True(present < TotalSeeds, "expected at least one row to leave DeletedAt null.");
     }
 
     [Fact]
@@ -135,6 +159,7 @@ public sealed class RowValueGeneratorTests
         new PostalCodeInferenceRule(),
         new PhoneInferenceRule(),
         new DecimalAmountInferenceRule(),
+        new CorrelatedTotalInferenceRule(),
         new UrlInferenceRule(),
         new SlugInferenceRule(),
         new IpAddressInferenceRule(),

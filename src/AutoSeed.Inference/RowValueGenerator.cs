@@ -1,4 +1,6 @@
+using EFCore.AutoSeed.Distributions;
 using EFCore.AutoSeed.Pipeline;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.Inference;
@@ -28,6 +30,10 @@ public sealed class RowValueGenerator
     /// table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
     /// the instance's actual CLR type during <c>SaveChanges</c>, and overwriting it with a
     /// generated value breaks every query that filters by it on a real relational database.
+    /// After every rule has run, a nullable, non-foreign-key property that a rule claimed (and
+    /// that the claiming rule does not already control the nullability of, see
+    /// <see cref="IPropertyInferenceRule.ControlsNullability"/>) has its generated value discarded
+    /// for about 10% of rows, so nullable columns are not populated on every single row.
     /// </summary>
     /// <param name="entityType">The entity type whose properties to generate values for.</param>
     /// <param name="rowRandom">
@@ -47,6 +53,7 @@ public sealed class RowValueGenerator
             .OrderBy(property => property.Name, StringComparer.Ordinal)];
         Dictionary<string, object> values = [];
         HashSet<string> claimedProperties = [];
+        HashSet<string> nullRateExempt = [];
 
         foreach (IPropertyInferenceRule rule in _rulesByPriority)
         {
@@ -58,6 +65,10 @@ public sealed class RowValueGenerator
                 }
 
                 claimedProperties.Add(property.Name);
+                if (rule.ControlsNullability)
+                {
+                    nullRateExempt.Add(property.Name);
+                }
 
                 SeededRandom propertyRandom = rowRandom.Derive(property.Name);
                 object? value = rule.Infer(property, propertyRandom, values);
@@ -68,6 +79,26 @@ public sealed class RowValueGenerator
             }
         }
 
+        ApplyNullRate(properties, values, nullRateExempt, rowRandom);
+
         return values;
+    }
+
+    private static void ApplyNullRate(
+        IReadOnlyList<IProperty> properties, Dictionary<string, object> values, HashSet<string> exempt, SeededRandom rowRandom)
+    {
+        foreach (IProperty property in properties)
+        {
+            if (!values.ContainsKey(property.Name) || !property.IsNullable || property.IsForeignKey() || exempt.Contains(property.Name))
+            {
+                continue;
+            }
+
+            SeededRandom nullRateRandom = rowRandom.Derive(property.Name).Derive("NullRate");
+            if (NullRateSampler.ShouldLeaveNull(nullRateRandom))
+            {
+                values.Remove(property.Name);
+            }
+        }
     }
 }

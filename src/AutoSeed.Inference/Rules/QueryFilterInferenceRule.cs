@@ -20,6 +20,9 @@ public sealed class QueryFilterInferenceRule : IPropertyInferenceRule
     public int Priority => 0;
 
     /// <inheritdoc />
+    public bool ControlsNullability => true;
+
+    /// <inheritdoc />
     public bool CanInfer(IProperty property) =>
         !property.IsForeignKey() && FindFilteredValue(property) is not null;
 

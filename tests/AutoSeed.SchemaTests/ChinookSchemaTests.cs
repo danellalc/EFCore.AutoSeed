@@ -56,6 +56,18 @@ public sealed class ChinookSchemaTests
 
         Assert.Equal(firstResult, secondResult);
     }
+
+    [Fact]
+    public async Task AutoSeedAsync_CorrelatesInvoiceLineTotalWithUnitPriceAndQuantity()
+    {
+        using ChinookContext context = new(SchemaTestSupport.UniqueDatabaseName());
+
+        await context.AutoSeedAsync(seed: 42, scale: 200);
+
+        List<InvoiceLine> lines = await context.InvoiceLines.ToListAsync();
+        Assert.NotEmpty(lines);
+        Assert.All(lines, line => Assert.Equal(line.UnitPrice * line.Quantity, line.LineTotal));
+    }
 }
 
 public sealed class ChinookContext(string databaseName) : DbContext
@@ -81,6 +93,7 @@ public sealed class ChinookContext(string databaseName) : DbContext
         modelBuilder.Entity<Track>().Property(track => track.UnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<Invoice>().Property(invoice => invoice.Total).HasPrecision(18, 2);
         modelBuilder.Entity<InvoiceLine>().Property(line => line.UnitPrice).HasPrecision(18, 2);
+        modelBuilder.Entity<InvoiceLine>().Property(line => line.LineTotal).HasPrecision(18, 2);
 
         modelBuilder.Entity<PlaylistTrack>().HasKey(playlistTrack => new { playlistTrack.PlaylistId, playlistTrack.TrackId });
 
@@ -197,4 +210,5 @@ public sealed class InvoiceLine
     public Track Track { get; set; } = null!;
     public decimal UnitPrice { get; set; }
     public int Quantity { get; set; }
+    public decimal LineTotal { get; set; }
 }

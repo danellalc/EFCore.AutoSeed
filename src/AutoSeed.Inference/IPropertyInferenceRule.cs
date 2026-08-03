@@ -19,6 +19,13 @@ public interface IPropertyInferenceRule
     int Priority { get; }
 
     /// <summary>
+    /// Whether this rule already decides for itself whether a row's value should be absent (for
+    /// example because it governs a global query filter). When <see langword="true"/>, a property
+    /// this rule claims is exempt from the row generator's own default null rate.
+    /// </summary>
+    bool ControlsNullability => false;
+
+    /// <summary>
     /// Determines whether this rule knows how to infer a value for <paramref name="property"/>.
     /// </summary>
     /// <param name="property">The property being generated.</param>
