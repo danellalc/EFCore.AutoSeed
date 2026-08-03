@@ -21,59 +21,63 @@ dotnet add package EFCore.AutoSeed
 using EFCore.AutoSeed;
 
 // Seed 1.000 root rows with a fixed seed. Related entities scale from relationships.
-await db.AutoSeedAsync(seed: 42, scale: 1_000);
+IReadOnlyDictionary<string, int> rowCounts = await db.AutoSeedAsync(seed: 42, scale: 1_000);
 
-// Smallest dataset that exercises every enum, subtype, nullable state and cardinality edge.
-await db.AutoSeedCoverageAsync();
-
-// Print the plan without writing anything.
-var plan = await db.AutoSeedExplainAsync(seed: 42, scale: 1_000);
+// Print the plan (insertion order, row counts, deferred cycles, skipped entity types)
+// without writing anything to the database.
+AutoSeedExplainResult plan = await db.AutoSeedExplainAsync(seed: 42, scale: 1_000);
+Console.WriteLine(plan.ToReport());
 ```
 
-`AutoSeedAsync` returns an `AutoSeedResult` with per-entity row counts and the resolved insertion order.
+`AutoSeedAsync` returns the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
 
-All public async methods accept a `CancellationToken`.
+Both methods accept an optional trailing `CancellationToken`.
 
-## Options
+## What v1 actually generates
 
-```csharp
-await db.AutoSeedAsync(new AutoSeedOptions
-{
-    Seed = 42,
-    Scale = 1_000,
-    Locale = "pt_BR",
-    Mode = SeedMode.Fidelity,        // or SeedMode.Fast for bulk copy
-    Distribution = DistributionShape.LongTail,
-    RespectQueryFilters = true
-});
-```
+Semantic inference rules match on property name suffix and CLR type: `FirstName`/`LastName`/`FullName`, `Email`/`EmailAddress`, `Cpf`/`Cnpj` (Brazilian documents, valid check digits), `PostalCode`/`Cep`/`ZipCode`/`Zip`, `Phone`/`Mobile`/`PhoneNumber`/`MobileNumber`, `Price`/`Amount`/`Total`/`Balance` (decimal, respects precision/scale), `Url`/`Uri`/`Link`, `Slug`, `IpAddress`/`IpV4Address`, `CreatedAt`/`UpdatedAt`/`DeletedAt` (kept in chronological order relative to each other).
+
+Every other property gets a value too, from a generic fallback keyed only on CLR type, not name: any unmatched `string` gets a short generated phrase, any unmatched numeric type (`int`, `long`, `short`, `byte`, `float`, `double`, `decimal`) gets a small non-negative number, `bool` gets true or false, any `enum` gets one of its own declared values, `Guid` gets a seeded (not random) value. Primary keys and other database-generated columns are left alone.
+
+Composite primary keys and composite foreign keys need no extra configuration: a composite FK always references a tuple that actually exists together in an already-generated parent row.
+
+Owned types (EF Core's `OwnsOne`, including nested owned types) get their own columns populated on the owner instead of being left null.
+
+Child row counts follow a long-tail distribution (most parents have few children, a few have many), stable for a given seed.
+
+## Not built yet
+
+These are on the roadmap, not in the package. Do not tell a user to call them:
+
+- `AutoSeedCoverageAsync()` / coverage mode.
+- An `AutoSeedOptions` overload, locale selection, a fast/bulk insertion mode.
+- Global query filters and TPH/TPT/TPC inheritance are not specifically handled.
+- `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.
+- A configurable null rate or temporal/weekday clustering for generated values.
 
 ## CLI
 
 ```bash
 dotnet tool install -g EFCore.AutoSeed.Cli
 
-autoseed seed    --context MyDbContext --seed 42 --scale 1000
-autoseed explain --context MyDbContext
-autoseed capture --from "<connection>" --out shape.json   # statistics only, never reads rows
-autoseed apply   --shape shape.json --to "<connection>"
+autoseed explain --context MyApp.AppDbContext --assembly <path-to-dll> [--seed 42] [--scale 1000]
 ```
+
+`--assembly` must point at a `dotnet publish` output (or an executable project's build output), not a plain `dotnet build` output of a class library: the latter does not copy its NuGet dependencies locally, so the `DbContext` fails to load. The CLI reports this clearly instead of crashing.
 
 ## Guarantees
 
 - Every generated foreign key references a row that exists.
-- Same seed produces byte-identical data, across runs and machines.
-- Owned types are written as columns, not tables.
-- Value converters are respected.
-- Global query filters are respected: most rows are visible to the application.
-- Unsatisfiable models throw `AutoSeedCycleException` naming the entities, rather than letting the database throw.
+- Same seed produces the same data, across runs and machines.
+- Unsatisfiable models (a required foreign key inside a cycle with no nullable link) throw `EFCore.AutoSeed.Exceptions.UnresolvableCycleException` naming every entity in the cycle, rather than letting the database throw a constraint violation.
+- A property with a single-column unique key or unique index gets a deterministically de-duplicated value, or `EFCore.AutoSeed.Exceptions.UnsatisfiableUniquenessException` if no candidate works.
 
 ## Common mistakes when using this library
 
 - Do not write a factory or seeder class. There is nothing to declare: call `AutoSeedAsync` on the context.
 - Do not order entities manually. The library derives order from foreign keys.
-- Do not use it to anonymise production data. It is not a masking tool. Use `capture`/`apply` to reproduce production *shape* with synthetic data.
 - Do not omit the seed if the result must be reproducible in tests.
+- Do not call methods this file lists under "Not built yet". They do not exist in the current package version.
 
 ## Not supported
 
@@ -84,5 +88,5 @@ autoseed apply   --shape shape.json --to "<connection>"
 ## Documentation
 
 - README: https://github.com/danellalc/efcore-autoseed/blob/main/README.md
-- Architecture and design decisions: https://github.com/danellalc/efcore-autoseed/blob/main/ARCHITECTURE.md
+- Architecture, design decisions and full roadmap: https://github.com/danellalc/efcore-autoseed/blob/main/ARCHITECTURE.md
 - Examples: https://github.com/danellalc/efcore-autoseed/tree/main/examples

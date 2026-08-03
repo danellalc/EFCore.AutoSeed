@@ -35,9 +35,9 @@ One package. Nothing to configure before the first run.
 
 ### It reads the EF Core model, not the database schema
 
-DDL introspection sees tables and columns. The EF model also carries navigation properties, owned types, TPH/TPT inheritance, value converters, shadow properties and global query filters.
+DDL introspection sees tables and columns. The EF model also carries navigation properties, composite keys, self-references and owned types.
 
-AutoSeed generates data your **database accepts and your application can actually read**: soft-deleted rows that respect your query filter, enums stored through a converter, owned types written as columns rather than tables.
+AutoSeed generates data your **database accepts**: composite primary keys and composite foreign keys need no extra configuration, and owned types (`OwnsOne`, including nested owned types) get their own columns populated instead of being left null.
 
 It also works before the database exists.
 
@@ -59,34 +59,25 @@ Order:      3.847 rows   long tail: mean 3.8, max 512, one customer holds 13%
 OrderItem: 19.203 rows
 ```
 
-Most customers have one order. A few have hundreds. Timestamps cluster on weekdays and business hours. Optional properties are actually null sometimes.
+Most customers have one order. A few have hundreds, and the mean and the outliers stay the same across runs with the same seed.
 
-This is the difference between a test database and a rehearsal of production.
+Weekday/business-hour clustering, a configurable null rate and correlated properties are next; see the [roadmap](#roadmap).
 
-### Coverage mode
-
-The opposite of bulk. The *smallest* dataset that exercises everything:
+### It explains itself before it writes anything
 
 ```csharp
-await db.AutoSeedCoverageAsync();
+var plan = await db.AutoSeedExplainAsync(seed: 42, scale: 1_000);
+Console.WriteLine(plan.ToReport());
 ```
 
-Every enum value. Every subtype in every hierarchy. Every nullable property in both states. Every relationship at zero, one and many. Every string at empty, one character and max length.
+Prints the insertion order, the row count per entity type, which cycles got deferred to a second pass, and which entity types were skipped and why. Nothing is written to the database.
 
-Usually under 50 rows. The dataset unit tests want and nobody assembles by hand without forgetting half of it.
-
-### Production shape, without production data
-
-The oldest dilemma in performance testing: you need production-shaped data, and you cannot copy production.
+The same thing is available from the command line:
 
 ```bash
-autoseed capture --from "Server=prod;..." --out shape.json
-autoseed apply   --shape shape.json --to "Server=local;..."
+dotnet tool install -g EFCore.AutoSeed.Cli
+autoseed explain --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll
 ```
-
-`capture` reads **statistics only**: row counts, index cardinality, value distribution histograms. It never reads a row. The output contains no names, no emails, no identifiers. Nothing personal, by construction rather than by promise.
-
-`apply` reproduces that shape locally with synthetic data, so your local query planner behaves like production's.
 
 ## Supported frameworks
 
@@ -103,7 +94,7 @@ Supported EF Core versions: the two most recent majors.
 
 ## What it does not do
 
-- **It does not anonymise production data.** Not a masking tool. Use shape capture above for the safe alternative.
+- **It does not anonymise production data.** Not a masking tool. Production-shape capture (statistics only, never a data row) is planned; see the [roadmap](#roadmap).
 - **It is not a service.** No cloud, no account, no server to keep running.
 - **EF Core only.** Not Dapper, not raw ADO.NET, not other ORMs.
 - **SQL Server and PostgreSQL only.**
@@ -130,6 +121,20 @@ Also tested against 4 real, public schemas: Northwind, Chinook, Contoso Universi
 They are all seeders. They are all manual. That is the gap this fills.
 
 Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQL, reading DDL rather than an ORM model.
+
+## Roadmap
+
+Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, `AutoSeedAsync`/`AutoSeedExplainAsync`, and `autoseed explain`.
+
+Not shipped yet:
+
+- **Coverage mode** (`AutoSeedCoverageAsync`): the smallest dataset that touches every enum value, every subtype, every nullable state and every cardinality edge.
+- **Bulk insert** (`SqlBulkCopy`, PostgreSQL binary `COPY`) as a faster alternative to the current EF-tracked insert, with a test proving both modes produce equivalent data.
+- **TPH/TPT/TPC inheritance** and **global query filters**.
+- **Full distributions**: weekday/business-hour clustering, a configurable null rate, correlated properties.
+- **Production shape capture and apply** (`autoseed capture`/`autoseed apply`): reproduce production's row counts and value distribution locally from statistics only, never a data row.
+
+Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 
 ## Documentation
 
