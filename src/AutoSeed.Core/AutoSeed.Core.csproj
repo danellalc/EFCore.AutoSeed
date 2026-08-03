@@ -1,12 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageId>EFCore.AutoSeed</PackageId>
-    <Description>Seeds a database by reading the EF Core model. No factories, no CSV, no manual ordering.</Description>
-    <AssemblyName>EFCore.AutoSeed</AssemblyName>
-    <RootNamespace>EFCore.AutoSeed</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">

@@ -1,17 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>EFCore.AutoSeed</PackageId>
+    <Description>Seeds a database by reading the EF Core model. No factories, no CSV, no manual ordering.</Description>
+    <PackageTags>ef-core;entity-framework;testing;test-data;seeding;bogus;fixtures</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>EFCore.AutoSeed.Inference</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" />
+    <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Bogus" Version="35.6.5" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!--
+    AutoSeed.Core is an internal implementation project, never published on its own. Without this,
+    dotnet pack lists it as an unresolvable NuGet dependency instead of bundling its DLL here.
+  -->
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="BuildOnlySettings;ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('Extension', '.dll'))" />
+    </ItemGroup>
+  </Target>
 
 </Project>
