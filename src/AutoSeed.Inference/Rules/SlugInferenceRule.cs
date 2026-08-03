@@ -16,7 +16,7 @@ public sealed class SlugInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "Slug");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.Internet internet = new() { Random = new Bogus.Randomizer(random.Seed) };
         string slug = string.Join('-', internet.DomainWord(), internet.DomainWord());

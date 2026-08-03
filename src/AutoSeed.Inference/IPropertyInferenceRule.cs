@@ -37,6 +37,11 @@ public interface IPropertyInferenceRule
     /// The values already generated for other properties on this same row, keyed by property name.
     /// Only properties inferred by a lower-priority rule are guaranteed to be present.
     /// </param>
-    /// <returns>The inferred value. Never <see langword="null"/>; whether a row actually gets a null is decided elsewhere.</returns>
-    object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues);
+    /// <returns>
+    /// The inferred value, or <see langword="null"/> if this specific row should leave the
+    /// property at its default (a rule bound to a query filter deciding this row should not pass
+    /// it, say). A property whose inferred value is <see langword="null"/> is simply absent from
+    /// the generated row, same as a property no rule recognizes at all.
+    /// </returns>
+    object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues);
 }

@@ -46,18 +46,25 @@ public sealed class RowValueGenerator
             .Where(property => property != discriminatorProperty)
             .OrderBy(property => property.Name, StringComparer.Ordinal)];
         Dictionary<string, object> values = [];
+        HashSet<string> claimedProperties = [];
 
         foreach (IPropertyInferenceRule rule in _rulesByPriority)
         {
             foreach (IProperty property in properties)
             {
-                if (values.ContainsKey(property.Name) || !rule.CanInfer(property))
+                if (claimedProperties.Contains(property.Name) || !rule.CanInfer(property))
                 {
                     continue;
                 }
 
+                claimedProperties.Add(property.Name);
+
                 SeededRandom propertyRandom = rowRandom.Derive(property.Name);
-                values[property.Name] = rule.Infer(property, propertyRandom, values);
+                object? value = rule.Infer(property, propertyRandom, values);
+                if (value is not null)
+                {
+                    values[property.Name] = value;
+                }
             }
         }
 

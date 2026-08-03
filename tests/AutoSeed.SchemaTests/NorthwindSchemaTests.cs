@@ -44,6 +44,23 @@ public sealed class NorthwindSchemaTests
     }
 
     [Fact]
+    public async Task AutoSeedAsync_BiasesCustomerIsActiveTowardPassingTheQueryFilter()
+    {
+        using NorthwindContext context = new(SchemaTestSupport.UniqueDatabaseName());
+
+        await context.AutoSeedAsync(seed: 42, scale: 200);
+
+        List<bool> isActiveValues = await context.Set<Customer>().IgnoreQueryFilters()
+            .Select(customer => customer.IsActive)
+            .ToListAsync();
+
+        int activeCount = isActiveValues.Count(isActive => isActive);
+        Assert.True(activeCount > isActiveValues.Count * 0.7,
+            $"expected most customers to be active (passing the query filter), got {activeCount}/{isActiveValues.Count}.");
+        Assert.Contains(isActiveValues, isActive => !isActive);
+    }
+
+    [Fact]
     public async Task AutoSeedAsync_WithTheSameSeed_ProducesTheSameRowCounts()
     {
         using NorthwindContext first = new(SchemaTestSupport.UniqueDatabaseName());
@@ -88,6 +105,8 @@ public sealed class NorthwindContext(string databaseName) : DbContext
             .WithMany()
             .HasForeignKey(order => order.ShipperId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Customer>().HasQueryFilter(customer => customer.IsActive);
     }
 }
 
@@ -138,6 +157,7 @@ public sealed class Customer
     public string Phone { get; set; } = "";
     public string PostalCode { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    public bool IsActive { get; set; }
     public List<Order> Orders { get; set; } = [];
 }
 

@@ -74,7 +74,7 @@ public sealed class SimpleStringRuleTests
     public void Url_ProducesAValueShapedLikeAUrl()
     {
         IProperty property = InferenceFixtureModel.GetProperty("Url");
-        object value = new UrlInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = new UrlInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string url = Assert.IsType<string>(value);
         Assert.StartsWith("http", url, StringComparison.OrdinalIgnoreCase);
@@ -84,7 +84,7 @@ public sealed class SimpleStringRuleTests
     public void IpAddress_ProducesFourDotSeparatedOctets()
     {
         IProperty property = InferenceFixtureModel.GetProperty("IpAddress");
-        object value = new IpAddressInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = new IpAddressInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string ip = Assert.IsType<string>(value);
         Assert.Equal(4, ip.Split('.').Length);
@@ -94,7 +94,7 @@ public sealed class SimpleStringRuleTests
     public void PostalCode_ContainsAtLeastOneDigit()
     {
         IProperty property = InferenceFixtureModel.GetProperty("PostalCode");
-        object value = new PostalCodeInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = new PostalCodeInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string postalCode = Assert.IsType<string>(value);
         Assert.Contains(postalCode, char.IsDigit);
@@ -104,7 +104,7 @@ public sealed class SimpleStringRuleTests
     public void Phone_ContainsAtLeastOneDigit()
     {
         IProperty property = InferenceFixtureModel.GetProperty("Phone");
-        object value = new PhoneInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = new PhoneInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string phone = Assert.IsType<string>(value);
         Assert.Contains(phone, char.IsDigit);
@@ -114,7 +114,7 @@ public sealed class SimpleStringRuleTests
     public void Slug_JoinsTwoWordsWithAHyphenAndNoWhitespace()
     {
         IProperty property = InferenceFixtureModel.GetProperty("Slug");
-        object value = new SlugInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = new SlugInferenceRule().Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string slug = Assert.IsType<string>(value);
         Assert.Contains('-', slug);
@@ -130,7 +130,7 @@ public sealed class SimpleStringRuleTests
         bool anyHitTheBoundary = false;
         for (int seed = 0; seed < 50; seed++)
         {
-            string value = (string)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            string value = (string)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.True(value.Length <= 15, $"seed {seed}: '{value}' exceeds MaxLength 15.");
             anyHitTheBoundary |= value.Length == 15;
         }
@@ -143,8 +143,8 @@ public sealed class SimpleStringRuleTests
         IProperty property = InferenceFixtureModel.GetProperty(propertyName);
         Assert.True(rule.CanInfer(property));
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string firstValue = Assert.IsType<string>(first);
         Assert.NotEmpty(firstValue);

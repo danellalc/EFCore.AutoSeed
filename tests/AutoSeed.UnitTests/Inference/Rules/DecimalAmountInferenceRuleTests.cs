@@ -23,7 +23,7 @@ public sealed class DecimalAmountInferenceRuleTests
 
         for (int seed = 0; seed < 100; seed++)
         {
-            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             int scale = (decimal.GetBits(value)[3] >> 16) & 0xFF;
             Assert.True(scale <= 2, $"seed {seed}: {value} has more than 2 decimal places.");
         }
@@ -37,7 +37,7 @@ public sealed class DecimalAmountInferenceRuleTests
 
         for (int seed = 0; seed < 100; seed++)
         {
-            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.True(value < 1_000_000m, $"seed {seed}: {value} exceeds the precision(8,2) bound.");
             Assert.True(value >= 0m);
         }
@@ -51,7 +51,7 @@ public sealed class DecimalAmountInferenceRuleTests
 
         for (int seed = 0; seed < 100; seed++)
         {
-            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.True(value < 100m, $"seed {seed}: {value} exceeds the precision(4,2) bound of 99.99.");
         }
     }
@@ -64,7 +64,7 @@ public sealed class DecimalAmountInferenceRuleTests
 
         for (int seed = 0; seed < 100; seed++)
         {
-            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            decimal value = (decimal)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.True(value < 1m, $"seed {seed}: {value} exceeds the precision(2,2) bound of 0.99.");
         }
     }
@@ -77,7 +77,7 @@ public sealed class DecimalAmountInferenceRuleTests
 
         for (int seed = 0; seed < 20; seed++)
         {
-            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.IsType<decimal>(value);
         }
     }
@@ -88,8 +88,8 @@ public sealed class DecimalAmountInferenceRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("Balance");
         DecimalAmountInferenceRule rule = new();
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>())!;
 
         Assert.Equal(first, second);
     }

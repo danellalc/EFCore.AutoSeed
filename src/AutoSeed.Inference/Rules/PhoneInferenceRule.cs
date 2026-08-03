@@ -29,7 +29,7 @@ public sealed class PhoneInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "Phone", "Mobile", "PhoneNumber", "MobileNumber");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.PhoneNumbers phoneNumbers = new(_locale) { Random = new Bogus.Randomizer(random.Seed) };
         return StringLengthHelper.TruncateToMaxLength(phoneNumbers.PhoneNumber(), property);

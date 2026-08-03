@@ -16,7 +16,7 @@ public sealed class UrlInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "Url", "Uri", "Link");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.Internet internet = new() { Random = new Bogus.Randomizer(random.Seed) };
         return StringLengthHelper.TruncateToMaxLength(internet.Url(), property);

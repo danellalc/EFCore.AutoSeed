@@ -20,7 +20,7 @@ public sealed class GenericNumberInferenceRule : IPropertyInferenceRule
         IsSupportedNumericType(property) && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Type clrType = UnderlyingType(property);
 

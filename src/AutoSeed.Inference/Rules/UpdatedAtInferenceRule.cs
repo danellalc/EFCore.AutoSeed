@@ -40,7 +40,7 @@ public sealed class UpdatedAtInferenceRule : IPropertyInferenceRule
         PropertyNameMatch.IsClrType<DateTime>(property) && PropertyNameMatch.EndsWithAny(property, NameSuffixes);
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         DateTime lowerBound = TemporalHelpers.FindSiblingDateTime(generatedValues, CreatedAtSuffixes) ?? _referenceNow - _lookback;
         return TemporalHelpers.Between(random, lowerBound, _referenceNow);

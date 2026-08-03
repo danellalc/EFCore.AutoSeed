@@ -21,7 +21,7 @@ public sealed class DecimalAmountInferenceRule : IPropertyInferenceRule
         PropertyNameMatch.IsClrType<decimal>(property) && PropertyNameMatch.EndsWithAny(property, "Price", "Amount", "Total", "Balance");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         int scale = property.GetScale() ?? 2;
         decimal max = MaxForPrecision(property.GetPrecision(), scale);

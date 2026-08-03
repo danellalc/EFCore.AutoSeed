@@ -16,7 +16,7 @@ public sealed class DocumentInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "Cpf", "Cnpj");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.Randomizer randomizer = new(random.Seed);
 

@@ -17,7 +17,7 @@ public sealed class TemporalInferenceRuleTests
 
         for (int seed = 0; seed < 100; seed++)
         {
-            DateTime createdAt = (DateTime)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            DateTime createdAt = (DateTime)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             Assert.True(createdAt <= ReferenceNow, $"seed {seed}: {createdAt} is after the reference point.");
         }
     }
@@ -33,9 +33,9 @@ public sealed class TemporalInferenceRuleTests
         for (int seed = 0; seed < 100; seed++)
         {
             SeededRandom rowRandom = SeededRandom.FromRootSeed(seed);
-            DateTime createdAt = (DateTime)createdAtRule.Infer(createdAtProperty, rowRandom.Derive("CreatedAt"), new Dictionary<string, object>());
+            DateTime createdAt = (DateTime)createdAtRule.Infer(createdAtProperty, rowRandom.Derive("CreatedAt"), new Dictionary<string, object>())!;
             Dictionary<string, object> generated = new() { ["CreatedAt"] = createdAt };
-            DateTime updatedAt = (DateTime)updatedAtRule.Infer(updatedAtProperty, rowRandom.Derive("UpdatedAt"), generated);
+            DateTime updatedAt = (DateTime)updatedAtRule.Infer(updatedAtProperty, rowRandom.Derive("UpdatedAt"), generated)!;
 
             Assert.True(updatedAt >= createdAt, $"seed {seed}: UpdatedAt {updatedAt} is before CreatedAt {createdAt}.");
             Assert.True(updatedAt <= ReferenceNow, $"seed {seed}: UpdatedAt {updatedAt} is after the reference point.");
@@ -55,11 +55,11 @@ public sealed class TemporalInferenceRuleTests
         for (int seed = 0; seed < 100; seed++)
         {
             SeededRandom rowRandom = SeededRandom.FromRootSeed(seed);
-            DateTime createdAt = (DateTime)createdAtRule.Infer(createdAtProperty, rowRandom.Derive("CreatedAt"), new Dictionary<string, object>());
+            DateTime createdAt = (DateTime)createdAtRule.Infer(createdAtProperty, rowRandom.Derive("CreatedAt"), new Dictionary<string, object>())!;
             Dictionary<string, object> afterCreated = new() { ["CreatedAt"] = createdAt };
-            DateTime updatedAt = (DateTime)updatedAtRule.Infer(updatedAtProperty, rowRandom.Derive("UpdatedAt"), afterCreated);
+            DateTime updatedAt = (DateTime)updatedAtRule.Infer(updatedAtProperty, rowRandom.Derive("UpdatedAt"), afterCreated)!;
             Dictionary<string, object> afterUpdated = new() { ["CreatedAt"] = createdAt, ["UpdatedAt"] = updatedAt };
-            DateTime deletedAt = (DateTime)deletedAtRule.Infer(deletedAtProperty, rowRandom.Derive("DeletedAt"), afterUpdated);
+            DateTime deletedAt = (DateTime)deletedAtRule.Infer(deletedAtProperty, rowRandom.Derive("DeletedAt"), afterUpdated)!;
 
             Assert.True(deletedAt >= updatedAt, $"seed {seed}: DeletedAt {deletedAt} is before UpdatedAt {updatedAt}.");
         }

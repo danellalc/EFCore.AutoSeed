@@ -29,7 +29,7 @@ public sealed class PostalCodeInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "PostalCode", "Cep", "ZipCode", "Zip");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.Address address = new(_locale) { Random = new Bogus.Randomizer(random.Seed) };
         return StringLengthHelper.TruncateToMaxLength(address.ZipCode(), property);

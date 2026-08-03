@@ -25,7 +25,7 @@ public sealed class DocumentInferenceRuleTests
 
         for (int seed = 0; seed < 200; seed++)
         {
-            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             string cpf = Assert.IsType<string>(value);
 
             Assert.Equal(11, cpf.Length);
@@ -41,7 +41,7 @@ public sealed class DocumentInferenceRuleTests
 
         for (int seed = 0; seed < 200; seed++)
         {
-            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             string cnpj = Assert.IsType<string>(value);
 
             Assert.Equal(14, cnpj.Length);
@@ -79,8 +79,8 @@ public sealed class DocumentInferenceRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("Cpf");
         DocumentInferenceRule rule = new();
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>())!;
 
         Assert.Equal(first, second);
     }

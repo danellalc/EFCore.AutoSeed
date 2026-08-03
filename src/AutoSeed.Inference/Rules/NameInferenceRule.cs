@@ -30,7 +30,7 @@ public sealed class NameInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "FirstName", "LastName", "FullName");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.Name nameDataSet = new(_locale) { Random = new Bogus.Randomizer(random.Seed) };
 

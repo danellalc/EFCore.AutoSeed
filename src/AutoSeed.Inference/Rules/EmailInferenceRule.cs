@@ -30,7 +30,7 @@ public sealed class EmailInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "Email", "EmailAddress");
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         string? firstName = FindSiblingString(generatedValues, "FirstName");
         string? lastName = FindSiblingString(generatedValues, "LastName");

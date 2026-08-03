@@ -18,7 +18,7 @@ public sealed class GenericTextInferenceRule : IPropertyInferenceRule
         property.ClrType == typeof(string) && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Bogus.DataSets.Lorem lorem = new() { Random = new Bogus.Randomizer(random.Seed) };
         string value = string.Join(' ', lorem.Words(2).Select(Capitalize));

@@ -31,7 +31,7 @@ public sealed class NameInferenceRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("FirstName");
         NameInferenceRule rule = new();
 
-        object value = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         Assert.IsType<string>(value);
         Assert.NotEmpty((string)value);
@@ -43,8 +43,8 @@ public sealed class NameInferenceRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("FirstName");
         NameInferenceRule rule = new();
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         Assert.Equal(first, second);
     }

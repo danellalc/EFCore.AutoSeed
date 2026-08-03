@@ -24,8 +24,8 @@ public sealed class EmailInferenceRuleTests
         Dictionary<string, object> withNames = new() { ["FirstName"] = "Ana", ["LastName"] = "Silva" };
         Dictionary<string, object> withoutNames = [];
 
-        object withNamesResult = rule.Infer(property, SeededRandom.FromRootSeed(42).Derive("x"), withNames);
-        object withoutNamesResult = rule.Infer(property, SeededRandom.FromRootSeed(42).Derive("x"), withoutNames);
+        object withNamesResult = rule.Infer(property, SeededRandom.FromRootSeed(42).Derive("x"), withNames)!;
+        object withoutNamesResult = rule.Infer(property, SeededRandom.FromRootSeed(42).Derive("x"), withoutNames)!;
 
         Assert.NotEqual(withNamesResult, withoutNamesResult);
     }
@@ -37,8 +37,8 @@ public sealed class EmailInferenceRuleTests
         EmailInferenceRule rule = new();
         Dictionary<string, object> siblings = new() { ["FirstName"] = "Ana", ["LastName"] = "Silva" };
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), siblings);
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), siblings);
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), siblings)!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), siblings)!;
 
         Assert.Equal(first, second);
     }
@@ -49,7 +49,7 @@ public sealed class EmailInferenceRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("Email");
         EmailInferenceRule rule = new();
 
-        object value = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object value = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         string email = Assert.IsType<string>(value);
         Assert.Contains('@', email);

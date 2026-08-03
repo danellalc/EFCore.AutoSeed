@@ -18,7 +18,7 @@ public sealed class GenericGuidInferenceRule : IPropertyInferenceRule
         PropertyNameMatch.IsClrType<Guid>(property) && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         byte[] bytes = new byte[16];
         for (int index = 0; index < bytes.Length; index++)

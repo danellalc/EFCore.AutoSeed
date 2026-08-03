@@ -36,6 +36,6 @@ public sealed class CreatedAtInferenceRule : IPropertyInferenceRule
         PropertyNameMatch.IsClrType<DateTime>(property) && PropertyNameMatch.EndsWithAny(property, NameSuffixes);
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues) =>
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues) =>
         TemporalHelpers.Between(random, _referenceNow - _lookback, _referenceNow);
 }

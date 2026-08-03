@@ -15,8 +15,8 @@ public sealed class GenericPrimitiveRuleTests
         GenericNumberInferenceRule rule = new();
 
         Assert.True(rule.CanInfer(property));
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         int value = Assert.IsType<int>(first);
         Assert.True(value is >= 0 and < 1_000);
@@ -29,7 +29,7 @@ public sealed class GenericPrimitiveRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("EqualScalePrice");
         GenericNumberInferenceRule rule = new();
 
-        object value = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>());
+        object value = rule.Infer(property, SeededRandom.FromRootSeed(7), new Dictionary<string, object>())!;
 
         decimal decimalValue = Assert.IsType<decimal>(value);
         Assert.True(decimalValue.Scale <= 2);
@@ -49,8 +49,8 @@ public sealed class GenericPrimitiveRuleTests
         GenericBooleanInferenceRule rule = new();
 
         Assert.True(rule.CanInfer(property));
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         Assert.IsType<bool>(first);
         Assert.Equal(first, second);
@@ -65,7 +65,7 @@ public sealed class GenericPrimitiveRuleTests
         HashSet<bool> seen = [];
         for (int seed = 0; seed < 20; seed++)
         {
-            seen.Add((bool)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>()));
+            seen.Add((bool)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!);
         }
 
         Assert.Equal(2, seen.Count);
@@ -81,7 +81,7 @@ public sealed class GenericPrimitiveRuleTests
 
         for (int seed = 0; seed < 30; seed++)
         {
-            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>());
+            object value = rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
             PersonStatus status = Assert.IsType<PersonStatus>(value);
             Assert.True(Enum.IsDefined(status));
         }
@@ -93,8 +93,8 @@ public sealed class GenericPrimitiveRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("Status");
         GenericEnumInferenceRule rule = new();
 
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         Assert.Equal(first, second);
     }
@@ -106,8 +106,8 @@ public sealed class GenericPrimitiveRuleTests
         GenericGuidInferenceRule rule = new();
 
         Assert.True(rule.CanInfer(property));
-        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
-        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>());
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
 
         Guid guid = Assert.IsType<Guid>(first);
         Assert.NotEqual(Guid.Empty, guid);
@@ -120,8 +120,8 @@ public sealed class GenericPrimitiveRuleTests
         IProperty property = InferenceFixtureModel.GetProperty("ExternalId");
         GenericGuidInferenceRule rule = new();
 
-        Guid first = (Guid)rule.Infer(property, SeededRandom.FromRootSeed(1), new Dictionary<string, object>());
-        Guid second = (Guid)rule.Infer(property, SeededRandom.FromRootSeed(2), new Dictionary<string, object>());
+        Guid first = (Guid)rule.Infer(property, SeededRandom.FromRootSeed(1), new Dictionary<string, object>())!;
+        Guid second = (Guid)rule.Infer(property, SeededRandom.FromRootSeed(2), new Dictionary<string, object>())!;
 
         Assert.NotEqual(first, second);
     }

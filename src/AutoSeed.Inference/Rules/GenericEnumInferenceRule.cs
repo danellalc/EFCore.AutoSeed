@@ -17,7 +17,7 @@ public sealed class GenericEnumInferenceRule : IPropertyInferenceRule
         UnderlyingEnumType(property) is not null && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     /// <inheritdoc />
-    public object Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
+    public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         Type clrType = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
         object[] values = [.. Enum.GetValues(clrType).Cast<object>()];

@@ -160,6 +160,7 @@ public static class DbContextAutoSeedExtensions
 
     private static IReadOnlyList<IPropertyInferenceRule> BuildDefaultRules() =>
     [
+        new QueryFilterInferenceRule(),
         new NameInferenceRule(),
         new EmailInferenceRule(),
         new DocumentInferenceRule(),
