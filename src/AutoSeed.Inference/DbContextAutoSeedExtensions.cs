@@ -2,6 +2,7 @@ using EFCore.AutoSeed.Coverage;
 using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
+using EFCore.AutoSeed.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -64,6 +65,61 @@ public static class DbContextAutoSeedExtensions
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
 
         return await new Persistence()
+            .InsertAsync(
+                context,
+                plan,
+                read.Edges,
+                resolution.DeferredEdges,
+                (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
+                rootRandom.Derive("Persistence"),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Like <see cref="AutoSeedAsync"/>, but writes through a database-specific bulk insert
+    /// (<c>SqlBulkCopy</c> on SQL Server, binary <c>COPY</c> on PostgreSQL) instead of
+    /// <see cref="DbContext.SaveChangesAsync(CancellationToken)"/>, bypassing the change tracker
+    /// entirely. Faster at scale; supports only entity types simple enough to make that safe.
+    /// </summary>
+    /// <param name="context">The context to seed.</param>
+    /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
+    /// <param name="scale">The row count for entity types with no required principal.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The number of rows inserted, keyed by entity type name.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
+    /// <exception cref="Exceptions.UnresolvableCycleException">
+    /// The model contains a dependency cycle made entirely of required foreign keys.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedProviderException">
+    /// <paramref name="context"/>'s configured EF Core provider is neither SQL Server nor PostgreSQL.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedEntityTypeException">
+    /// The model needs a cycle-breaking second pass, declares an inherited or owned entity type, a
+    /// single-column identity primary key of a type fast mode does not assign itself, has no public
+    /// parameterless constructor, or a required principal has no generated rows.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
+    /// A unique property ran out of deterministic candidates to resolve a collision.
+    /// </exception>
+    public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFastAsync(
+        this DbContext context, long seed, int scale, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
+
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
+        IBulkInsertProvider provider = BulkInsertProviderFactory.Create(context);
+
+        return await new BulkPersistence(provider)
             .InsertAsync(
                 context,
                 plan,

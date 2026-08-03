@@ -14,10 +14,23 @@
     <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\AutoSeed.Coverage\AutoSeed.Coverage.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\AutoSeed.Distributions\AutoSeed.Distributions.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AutoSeed.Providers\AutoSeed.Providers.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Bogus" Version="35.6.5" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.18" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.18" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,9 +38,13 @@
   </ItemGroup>
 
   <!--
-    AutoSeed.Core and AutoSeed.Coverage are internal implementation projects, never published on
-    their own. Without this, dotnet pack lists each as an unresolvable NuGet dependency instead of
-    bundling its DLL here.
+    AutoSeed.Core, AutoSeed.Coverage, AutoSeed.Distributions and AutoSeed.Providers are internal
+    implementation projects, never published on their own. Without this, dotnet pack lists each as
+    an unresolvable NuGet dependency instead of bundling its DLL here. Their own PackageReferences
+    (Microsoft.EntityFrameworkCore.Relational, Microsoft.Data.SqlClient, Npgsql) are declared again,
+    directly, above: a project reference marked PrivateAssets="all" also hides the referenced
+    project's own package dependencies from the consumer, so they must be restated here or a
+    consumer installing EFCore.AutoSeed would silently be missing them at runtime.
   -->
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>

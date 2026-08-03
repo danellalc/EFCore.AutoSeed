@@ -11,6 +11,7 @@ obj/
 *.nupkg
 *.snupkg
 .nuget/
+artifacts/
 
 .idea/
 *.DotSettings.user
