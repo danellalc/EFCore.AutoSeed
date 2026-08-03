@@ -31,17 +31,16 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
         }
 
         SqlTransaction? transaction = context.Database.CurrentTransaction?.GetDbTransaction() as SqlTransaction;
-        IReadOnlyList<IProperty> properties = [.. entityType.GetProperties()];
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
 
-        using DataTable table = BuildDataTable(properties, rows);
+        using DataTable table = BuildDataTable(columns, rows);
         using SqlBulkCopy bulkCopy = new(connection, SqlBulkCopyOptions.KeepIdentity, transaction)
         {
             DestinationTableName = QualifiedTableName(entityType),
         };
 
-        foreach (IProperty property in properties)
+        foreach ((_, string columnName) in columns)
         {
-            string columnName = property.GetColumnName();
             bulkCopy.ColumnMappings.Add(columnName, columnName);
         }
 
@@ -57,21 +56,22 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
         return schema is null ? $"[{tableName}]" : $"[{schema}].[{tableName}]";
     }
 
-    private static DataTable BuildDataTable(IReadOnlyList<IProperty> properties, IReadOnlyList<IReadOnlyDictionary<string, object>> rows)
+    private static DataTable BuildDataTable(
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns, IReadOnlyList<IReadOnlyDictionary<string, object>> rows)
     {
         DataTable table = new();
-        foreach (IProperty property in properties)
+        foreach ((IProperty property, string columnName) in columns)
         {
             Type columnType = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
-            table.Columns.Add(property.GetColumnName(), columnType.IsEnum ? typeof(int) : columnType);
+            table.Columns.Add(columnName, columnType.IsEnum ? typeof(int) : columnType);
         }
 
         foreach (IReadOnlyDictionary<string, object> row in rows)
         {
             DataRow dataRow = table.NewRow();
-            foreach (IProperty property in properties)
+            foreach ((_, string columnName) in columns)
             {
-                dataRow[property.GetColumnName()] = row.TryGetValue(property.Name, out object? value)
+                dataRow[columnName] = row.TryGetValue(columnName, out object? value)
                     ? (value.GetType().IsEnum ? Convert.ToInt32(value) : value)
                     : DBNull.Value;
             }

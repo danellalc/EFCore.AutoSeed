@@ -29,17 +29,17 @@ public sealed class PostgreSqlBulkInsertProvider : IBulkInsertProvider
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        IReadOnlyList<IProperty> properties = [.. entityType.GetProperties()];
-        string columnList = string.Join(", ", properties.Select(property => Quote(property.GetColumnName())));
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
+        string columnList = string.Join(", ", columns.Select(column => Quote(column.ColumnName)));
         string copyCommand = $"COPY {QualifiedTableName(entityType)} ({columnList}) FROM STDIN (FORMAT BINARY)";
 
         await using NpgsqlBinaryImporter importer = await connection.BeginBinaryImportAsync(copyCommand, cancellationToken).ConfigureAwait(false);
         foreach (IReadOnlyDictionary<string, object> row in rows)
         {
             await importer.StartRowAsync(cancellationToken).ConfigureAwait(false);
-            foreach (IProperty property in properties)
+            foreach ((IProperty property, string columnName) in columns)
             {
-                object? value = row.TryGetValue(property.Name, out object? found) ? found : null;
+                object? value = row.TryGetValue(columnName, out object? found) ? found : null;
                 await WriteValueAsync(importer, value, property.ClrType, cancellationToken).ConfigureAwait(false);
             }
         }
