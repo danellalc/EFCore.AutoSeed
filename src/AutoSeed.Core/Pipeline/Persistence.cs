@@ -1,6 +1,7 @@
 using System.Reflection;
 using EFCore.AutoSeed.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.Pipeline;
@@ -106,6 +107,7 @@ public sealed class Persistence
             object instance = CreateInstance(entityType);
             context.Add(instance);
             ApplyValues(context, instance, rows[rowIndex]);
+            AssignOwnedTypes(context, entityType, instance, entityRandom.Derive(rowIndex), generateRow);
             AssignRequiredForeignKeys(context, requiredEdges, entityType, entityPlan, instance, rowIndex, driverRowIndices, insertedByEntityType);
             instances.Add(instance);
         }
@@ -191,6 +193,42 @@ public sealed class Persistence
             context.Entry(dependentInstance).Property(dependentProperties[index].Name).CurrentValue = principalValue;
         }
     }
+
+    private static void AssignOwnedTypes(
+        DbContext context,
+        IEntityType entityType,
+        object instance,
+        SeededRandom rowRandom,
+        Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow)
+    {
+        foreach (INavigation navigation in GetOwnedReferenceNavigations(entityType))
+        {
+            IEntityType ownedEntityType = navigation.TargetEntityType;
+            object ownedInstance = CreateInstance(ownedEntityType);
+
+            ReferenceEntry ownerReference = context.Entry(instance).Reference(navigation.Name);
+            ownerReference.CurrentValue = ownedInstance;
+
+            EntityEntry? ownedEntry = ownerReference.TargetEntry;
+            if (ownedEntry is null)
+            {
+                continue;
+            }
+
+            SeededRandom ownedRandom = rowRandom.Derive(navigation.Name);
+            Dictionary<string, object> ownedValues = generateRow(ownedEntityType, ownedRandom);
+            foreach (KeyValuePair<string, object> entry in ownedValues)
+            {
+                ownedEntry.Property(entry.Key).CurrentValue = entry.Value;
+            }
+
+            AssignOwnedTypes(context, ownedEntityType, ownedInstance, ownedRandom, generateRow);
+        }
+    }
+
+    private static IEnumerable<INavigation> GetOwnedReferenceNavigations(IEntityType entityType) =>
+        entityType.GetNavigations()
+            .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership && navigation.ForeignKey.PrincipalEntityType == entityType);
 
     private static void ApplyValues(DbContext context, object instance, Dictionary<string, object> values)
     {
