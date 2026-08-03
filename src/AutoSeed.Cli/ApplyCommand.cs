@@ -1,24 +1,30 @@
 using EFCore.AutoSeed.Exceptions;
+using EFCore.AutoSeed.Shape;
 using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.AutoSeed.Cli;
 
-internal static class ExplainCommand
+internal static class ApplyCommand
 {
     private const long DefaultSeed = 42;
     private const int DefaultScale = 1000;
 
     private const string Usage =
         """
-        Usage: autoseed explain --context <FullTypeName> --assembly <path-to-dll> [--seed <long>] [--scale <int>]
+        Usage: autoseed apply --context <FullTypeName> --assembly <path-to-dll> --shape <path-to-json> [--seed <long>] [--scale <int>]
 
-        Reads the DbContext's model and prints the seeding plan without writing anything to the database.
+        Seeds the database like AutoSeedAsync, but a table present in the shape file uses a row
+        count proportional to its captured row count relative to the largest captured table,
+        instead of --scale directly, so the seeded database's relative table sizes resemble where
+        the shape was captured from.
 
         Options:
           --context   <string>  Full name of the DbContext type to load. Required.
           --assembly  <path>    Path to the assembly (.dll) containing the DbContext. Required.
+          --shape     <path>    Path to a shape file written by 'autoseed capture'. Required.
           --seed      <long>    Seed every generated value derives from. Default: 42.
-          --scale     <int>     Row count for entity types with no required principal. Default: 1000.
+          --scale     <int>     Row count for the largest captured table, and for any table the
+                                shape did not capture. Default: 1000.
           -h, --help            Show this message.
 
         --assembly must point at a 'dotnet publish' output (or an executable project's build
@@ -54,6 +60,11 @@ internal static class ExplainCommand
             return UsageFailure("Missing required option --assembly.");
         }
 
+        if (!flags.TryGetValue("shape", out string? shapePath) || string.IsNullOrWhiteSpace(shapePath))
+        {
+            return UsageFailure("Missing required option --shape.");
+        }
+
         long seed = DefaultSeed;
         if (flags.TryGetValue("seed", out string? seedText) && !long.TryParse(seedText, out seed))
         {
@@ -66,6 +77,23 @@ internal static class ExplainCommand
             return UsageFailure($"Invalid --scale value '{scaleText}': expected a positive integer.");
         }
 
+        if (!File.Exists(shapePath))
+        {
+            Console.Error.WriteLine($"Shape file not found at '{shapePath}'.");
+            return CliExitCodes.ContextResolutionError;
+        }
+
+        ShapeCapture shape;
+        try
+        {
+            shape = await ShapeFile.ReadAsync(shapePath).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"Could not read shape file '{shapePath}': {exception.Message}");
+            return CliExitCodes.ContextResolutionError;
+        }
+
         DbContextLoadResult loadResult = DbContextLoader.Load(assemblyPath, contextTypeName);
         if (loadResult.Context is not DbContext loadedContext)
         {
@@ -76,8 +104,12 @@ internal static class ExplainCommand
         await using DbContext context = loadedContext;
         try
         {
-            AutoSeedExplainResult result = await context.AutoSeedExplainAsync(seed, scale).ConfigureAwait(false);
-            Console.WriteLine(result.ToReport());
+            IReadOnlyDictionary<string, int> result = await context.AutoSeedFromShapeAsync(seed, shape, scale).ConfigureAwait(false);
+            foreach (KeyValuePair<string, int> entry in result.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+            {
+                Console.WriteLine($"{entry.Key}: {entry.Value} rows");
+            }
+
             return CliExitCodes.Success;
         }
         catch (AutoSeedException exception)

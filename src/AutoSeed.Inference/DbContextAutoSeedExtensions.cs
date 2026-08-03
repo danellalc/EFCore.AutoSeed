@@ -3,6 +3,7 @@ using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
 using EFCore.AutoSeed.Providers;
+using EFCore.AutoSeed.Shape;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -210,6 +211,102 @@ public static class DbContextAutoSeedExtensions
                 resolution.DeferredEdges,
                 (entityType, random) => coverageValueGenerator.GenerateRow(entityType, random),
                 SeededRandom.FromRootSeed(CoverageSeed),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads <paramref name="context"/>'s row counts straight from the database engine's own
+    /// maintained statistics (<c>sys.dm_db_partition_stats</c> on SQL Server, <c>pg_class.reltuples</c>
+    /// on PostgreSQL): never a query against an actual table. Feed the result into
+    /// <see cref="AutoSeedFromShapeAsync"/>, save it to disk with the <c>EFCore.AutoSeed.Shape</c>
+    /// package's <c>ShapeFile.WriteAsync</c>, or inspect it directly.
+    /// </summary>
+    /// <param name="context">The context to capture from, typically pointed at a production replica.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The captured row count for every seedable entity type in the model.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Exceptions.UnsupportedProviderException">
+    /// <paramref name="context"/>'s configured EF Core provider is neither SQL Server nor PostgreSQL.
+    /// </exception>
+    public static Task<ShapeCapture> CaptureShapeAsync(this DbContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        IShapeCaptureProvider provider = ShapeCaptureProviderFactory.Create(context);
+        return new ShapeCapturer(provider).CaptureAsync(context, cancellationToken);
+    }
+
+    /// <summary>
+    /// Like <see cref="AutoSeedAsync"/>, but an entity type present in <paramref name="shape"/> uses
+    /// a scale proportional to its captured row count relative to the largest captured entity type,
+    /// instead of <paramref name="scale"/> directly, so the seeded database's relative table sizes
+    /// resemble where <paramref name="shape"/> was captured from. Only shipped for fidelity mode; no
+    /// <c>AutoSeedFastAsync</c> equivalent yet.
+    /// </summary>
+    /// <param name="context">The context to seed.</param>
+    /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
+    /// <param name="shape">A capture from <see cref="CaptureShapeAsync"/>, or read from disk with <c>ShapeFile.ReadAsync</c>.</param>
+    /// <param name="scale">
+    /// The row count for the largest entity type <paramref name="shape"/> captured a row count for,
+    /// and for any entity type with no required principal that <paramref name="shape"/> did not capture.
+    /// </param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The number of rows inserted, keyed by entity type name.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="shape"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
+    /// <exception cref="Exceptions.UnresolvableCycleException">
+    /// The model contains a dependency cycle made entirely of required foreign keys.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedEntityTypeException">
+    /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
+    /// A unique property ran out of deterministic candidates to resolve a collision.
+    /// </exception>
+    public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFromShapeAsync(
+        this DbContext context, long seed, ShapeCapture shape, int scale, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(shape);
+        if (scale <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(scale), scale, "Must be positive.");
+        }
+
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
+
+        Dictionary<string, long> capturedRowCounts = shape.Tables.ToDictionary(table => table.EntityTypeName, table => table.RowCount);
+        long maxCapturedRowCount = capturedRowCounts.Values.DefaultIfEmpty(0).Max();
+
+        Dictionary<IEntityType, int> scaleByEntityType = [];
+        if (maxCapturedRowCount > 0)
+        {
+            foreach (IEntityType entityType in read.EntityTypes)
+            {
+                if (capturedRowCounts.TryGetValue(entityType.Name, out long rowCount) && rowCount > 0)
+                {
+                    scaleByEntityType[entityType] = Math.Max(1, (int)Math.Round(scale * (double)rowCount / maxCapturedRowCount));
+                }
+            }
+        }
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(resolution.Order, read.Edges, scaleByEntityType, scale, rootRandom.Derive("GenerationPlan"));
+
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
+
+        return await new Persistence()
+            .InsertAsync(
+                context,
+                plan,
+                read.Edges,
+                resolution.DeferredEdges,
+                (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
+                rootRandom.Derive("Persistence"),
                 cancellationToken)
             .ConfigureAwait(false);
     }

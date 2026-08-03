@@ -15,6 +15,7 @@
     <ProjectReference Include="..\AutoSeed.Coverage\AutoSeed.Coverage.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\AutoSeed.Distributions\AutoSeed.Distributions.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\AutoSeed.Providers\AutoSeed.Providers.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AutoSeed.Shape\AutoSeed.Shape.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

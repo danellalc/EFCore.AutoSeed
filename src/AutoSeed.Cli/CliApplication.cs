@@ -8,8 +8,10 @@ internal static class CliApplication
 
         Usage:
           autoseed explain --context <FullTypeName> --assembly <path-to-dll> [--seed <long>] [--scale <int>]
+          autoseed capture --context <FullTypeName> --assembly <path-to-dll> --output <path-to-json>
+          autoseed apply --context <FullTypeName> --assembly <path-to-dll> --shape <path-to-json> [--seed <long>] [--scale <int>]
 
-        Run 'autoseed explain --help' for details on the explain command.
+        Run 'autoseed <command> --help' for details on a specific command.
         """;
 
     internal static async Task<int> RunAsync(string[] args)
@@ -39,13 +41,15 @@ internal static class CliApplication
         return command switch
         {
             "explain" => await ExplainCommand.RunAsync(remaining).ConfigureAwait(false),
+            "capture" => await CaptureCommand.RunAsync(remaining).ConfigureAwait(false),
+            "apply" => await ApplyCommand.RunAsync(remaining).ConfigureAwait(false),
             _ => UnknownCommand(command),
         };
     }
 
     private static int UnknownCommand(string command)
     {
-        Console.Error.WriteLine($"Unknown command '{command}'. Only 'explain' is currently implemented.");
+        Console.Error.WriteLine($"Unknown command '{command}'. Only 'explain', 'capture' and 'apply' are currently implemented.");
         Console.Error.WriteLine();
         Console.Error.WriteLine(TopLevelUsage);
         return CliExitCodes.UsageError;

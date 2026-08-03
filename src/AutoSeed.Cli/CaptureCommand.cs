@@ -1,29 +1,28 @@
 using EFCore.AutoSeed.Exceptions;
+using EFCore.AutoSeed.Shape;
 using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.AutoSeed.Cli;
 
-internal static class ExplainCommand
+internal static class CaptureCommand
 {
-    private const long DefaultSeed = 42;
-    private const int DefaultScale = 1000;
-
     private const string Usage =
         """
-        Usage: autoseed explain --context <FullTypeName> --assembly <path-to-dll> [--seed <long>] [--scale <int>]
+        Usage: autoseed capture --context <FullTypeName> --assembly <path-to-dll> --output <path-to-json>
 
-        Reads the DbContext's model and prints the seeding plan without writing anything to the database.
+        Reads each table's row count from the database engine's own maintained statistics
+        (never an actual data row) and writes them to a shape file.
 
         Options:
           --context   <string>  Full name of the DbContext type to load. Required.
           --assembly  <path>    Path to the assembly (.dll) containing the DbContext. Required.
-          --seed      <long>    Seed every generated value derives from. Default: 42.
-          --scale     <int>     Row count for entity types with no required principal. Default: 1000.
+          --output    <path>    Path to write the captured shape to. Required.
           -h, --help            Show this message.
 
-        --assembly must point at a 'dotnet publish' output (or an executable project's build
-        output). A plain 'dotnet build' output of a class library does not copy its NuGet package
-        dependencies locally, so the DbContext will fail to load.
+        Only SQL Server and PostgreSQL are supported. --assembly must point at a 'dotnet publish'
+        output (or an executable project's build output); a plain 'dotnet build' output of a class
+        library does not copy its NuGet package dependencies locally, so the DbContext will fail
+        to load.
         """;
 
     internal static async Task<int> RunAsync(IReadOnlyList<string> args)
@@ -54,16 +53,9 @@ internal static class ExplainCommand
             return UsageFailure("Missing required option --assembly.");
         }
 
-        long seed = DefaultSeed;
-        if (flags.TryGetValue("seed", out string? seedText) && !long.TryParse(seedText, out seed))
+        if (!flags.TryGetValue("output", out string? outputPath) || string.IsNullOrWhiteSpace(outputPath))
         {
-            return UsageFailure($"Invalid --seed value '{seedText}': expected an integer.");
-        }
-
-        int scale = DefaultScale;
-        if (flags.TryGetValue("scale", out string? scaleText) && (!int.TryParse(scaleText, out scale) || scale <= 0))
-        {
-            return UsageFailure($"Invalid --scale value '{scaleText}': expected a positive integer.");
+            return UsageFailure("Missing required option --output.");
         }
 
         DbContextLoadResult loadResult = DbContextLoader.Load(assemblyPath, contextTypeName);
@@ -76,8 +68,9 @@ internal static class ExplainCommand
         await using DbContext context = loadedContext;
         try
         {
-            AutoSeedExplainResult result = await context.AutoSeedExplainAsync(seed, scale).ConfigureAwait(false);
-            Console.WriteLine(result.ToReport());
+            ShapeCapture shape = await context.CaptureShapeAsync().ConfigureAwait(false);
+            await ShapeFile.WriteAsync(shape, outputPath).ConfigureAwait(false);
+            Console.WriteLine($"Captured {shape.Tables.Count} table(s) to '{outputPath}'.");
             return CliExitCodes.Success;
         }
         catch (AutoSeedException exception)

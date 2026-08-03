@@ -101,6 +101,79 @@ public sealed class CliApplicationTests
         Assert.DoesNotContain("at EFCore.AutoSeed", error);
     }
 
+    [Fact]
+    public async Task RunAsync_CaptureWithoutOutput_FailsWithUsageError()
+    {
+        (int exitCode, _, string error) = await RunCapturedAsync(
+            ["capture", "--context", ContextTypeName, "--assembly", TestAssemblyPath]);
+
+        Assert.Equal(CliExitCodes.UsageError, exitCode);
+        Assert.Contains("--output", error);
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureAgainstAnUnsupportedProvider_FailsWithModelError()
+    {
+        string outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+
+        try
+        {
+            (int exitCode, _, string error) = await RunCapturedAsync(
+                ["capture", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--output", outputPath]);
+
+            Assert.Equal(CliExitCodes.ModelError, exitCode);
+            Assert.Contains("InMemory", error);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ApplyWithoutShape_FailsWithUsageError()
+    {
+        (int exitCode, _, string error) = await RunCapturedAsync(
+            ["apply", "--context", ContextTypeName, "--assembly", TestAssemblyPath]);
+
+        Assert.Equal(CliExitCodes.UsageError, exitCode);
+        Assert.Contains("--shape", error);
+    }
+
+    [Fact]
+    public async Task RunAsync_ApplyWithAMissingShapeFile_FailsWithContextResolutionError()
+    {
+        (int exitCode, _, string error) = await RunCapturedAsync(
+            ["apply", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--shape", "does-not-exist.json"]);
+
+        Assert.Equal(CliExitCodes.ContextResolutionError, exitCode);
+        Assert.Contains("not found", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RunAsync_ApplyWithARealShapeAndContext_ScalesProportionallyAndSucceeds()
+    {
+        string shapePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(shapePath, """{"version":1,"tables":[{"entityTypeName":"EFCore.AutoSeed.UnitTests.Cli.CliCustomer","rowCount":100}]}""");
+
+        try
+        {
+            (int exitCode, string output, string error) = await RunCapturedAsync(
+                ["apply", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--shape", shapePath, "--seed", "7", "--scale", "20"]);
+
+            Assert.Equal(CliExitCodes.Success, exitCode);
+            Assert.Empty(error);
+            Assert.Contains("CliCustomer", output);
+            Assert.Contains("CliOrder", output);
+            Assert.Contains("rows", output);
+        }
+        finally
+        {
+            File.Delete(shapePath);
+        }
+    }
+
     private static async Task<(int ExitCode, string Output, string Error)> RunCapturedAsync(string[] args)
     {
         TextWriter originalOut = Console.Out;

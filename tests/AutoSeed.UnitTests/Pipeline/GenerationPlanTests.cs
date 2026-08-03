@@ -110,6 +110,67 @@ public sealed class GenerationPlanTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new GenerationPlan(0));
     }
 
+    [Fact]
+    public void Plan_WithAScalePerRootEntityType_GivesEachOneItsOwnScaleAndFallsBackForTheRest()
+    {
+        using UnrelatedEntitiesContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        IEntityType zebra = order.Single(entityType => entityType.Name.EndsWith("Zebra", StringComparison.Ordinal));
+        IEntityType apple = order.Single(entityType => entityType.Name.EndsWith("Apple", StringComparison.Ordinal));
+
+        Dictionary<IEntityType, int> scaleByRootEntityType = new() { [zebra] = 250, [apple] = 5 };
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(order, read.Edges, scaleByRootEntityType, defaultScale: 30, SeededRandom.FromRootSeed(1));
+
+        Assert.Equal(250, Single(plan, "Zebra").RowCount);
+        Assert.Equal(5, Single(plan, "Apple").RowCount);
+        Assert.Equal(30, Single(plan, "Mango").RowCount);
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_IgnoresANonPositiveOverrideAndFallsBackToTheDefault()
+    {
+        using UnrelatedEntitiesContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        IEntityType zebra = order.Single(entityType => entityType.Name.EndsWith("Zebra", StringComparison.Ordinal));
+
+        Dictionary<IEntityType, int> scaleByRootEntityType = new() { [zebra] = 0 };
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(order, read.Edges, scaleByRootEntityType, defaultScale: 30, SeededRandom.FromRootSeed(1));
+
+        Assert.Equal(30, Single(plan, "Zebra").RowCount);
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_AndNullArguments_ThrowsArgumentNullException()
+    {
+        using LinearChainContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        Dictionary<IEntityType, int> scaleByRootEntityType = [];
+        SeededRandom random = SeededRandom.FromRootSeed(1);
+
+        Assert.Throws<ArgumentNullException>(() => new GenerationPlan().Plan(null!, read.Edges, scaleByRootEntityType, 10, random));
+        Assert.Throws<ArgumentNullException>(() => new GenerationPlan().Plan(order, null!, scaleByRootEntityType, 10, random));
+        Assert.Throws<ArgumentNullException>(() => new GenerationPlan().Plan(order, read.Edges, null!, 10, random));
+        Assert.Throws<ArgumentNullException>(() => new GenerationPlan().Plan(order, read.Edges, scaleByRootEntityType, 10, null!));
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_AndNonPositiveDefaultScale_ThrowsArgumentOutOfRangeException()
+    {
+        using LinearChainContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new GenerationPlan().Plan(order, read.Edges, new Dictionary<IEntityType, int>(), 0, SeededRandom.FromRootSeed(1)));
+    }
+
     private static EntityGenerationPlan Single(IReadOnlyList<EntityGenerationPlan> plan, string shortName) =>
         Assert.Single(plan, entry => entry.EntityType.Name.EndsWith(shortName, StringComparison.Ordinal));
 }
