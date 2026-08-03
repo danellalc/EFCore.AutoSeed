@@ -135,10 +135,10 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
 
 **v2: depth**
-Bulk insert with equivalence test, TPH/TPT/TPC, query filters, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
+Bulk insert with equivalence test, query filters, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
 
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
