@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AutoSeed.Core\AutoSeed.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\AutoSeed.Coverage\AutoSeed.Coverage.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,8 +24,9 @@
   </ItemGroup>
 
   <!--
-    AutoSeed.Core is an internal implementation project, never published on its own. Without this,
-    dotnet pack lists it as an unresolvable NuGet dependency instead of bundling its DLL here.
+    AutoSeed.Core and AutoSeed.Coverage are internal implementation projects, never published on
+    their own. Without this, dotnet pack lists each as an unresolvable NuGet dependency instead of
+    bundling its DLL here.
   -->
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>

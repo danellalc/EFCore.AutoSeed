@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Coverage;
 using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
@@ -18,6 +19,13 @@ public static class DbContextAutoSeedExtensions
     /// determinism guarantee. Revisit only as part of a documented breaking change.
     /// </summary>
     private static readonly DateTime ReferenceNow = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// The seed every <see cref="AutoSeedCoverageAsync"/> run derives from. Fixed rather than an
+    /// argument: coverage mode's row counts and boundary values are already structural, not scaled,
+    /// so there is nothing meaningful for a caller-supplied seed to vary except Guid properties.
+    /// </summary>
+    private const long CoverageSeed = 0;
 
     /// <summary>
     /// Reads <paramref name="context"/>'s model, works out an insertion order that satisfies every
@@ -106,6 +114,48 @@ public static class DbContextAutoSeedExtensions
         }
 
         return Task.FromResult(new AutoSeedExplainResult(resolution.Order, rowCounts, childCounts, read.SkippedEntityTypes, resolution.DeferredEdges));
+    }
+
+    /// <summary>
+    /// Reads <paramref name="context"/>'s model and writes the smallest dataset that touches every
+    /// enum value, every nullable property in both states, every string at its length boundaries,
+    /// and every relationship at zero, one and many, instead of realistic values at scale.
+    /// </summary>
+    /// <param name="context">The context to seed.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The number of rows inserted, keyed by entity type name.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Exceptions.UnresolvableCycleException">
+    /// The model contains a dependency cycle made entirely of required foreign keys.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedEntityTypeException">
+    /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
+    /// A unique property ran out of deterministic candidates to resolve a collision.
+    /// </exception>
+    public static async Task<IReadOnlyDictionary<string, int>> AutoSeedCoverageAsync(
+        this DbContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        IReadOnlyList<EntityGenerationPlan> plan = new CoveragePlan().Plan(resolution.Order, read.Edges);
+
+        CoverageValueGenerator coverageValueGenerator = new();
+
+        return await new Persistence()
+            .InsertAsync(
+                context,
+                plan,
+                read.Edges,
+                resolution.DeferredEdges,
+                (entityType, random) => coverageValueGenerator.GenerateRow(entityType, random),
+                SeededRandom.FromRootSeed(CoverageSeed),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static IReadOnlyList<IPropertyInferenceRule> BuildDefaultRules() =>

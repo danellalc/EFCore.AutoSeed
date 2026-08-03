@@ -43,6 +43,29 @@ public sealed class ContosoUniversitySchemaTests
     }
 
     [Fact]
+    public async Task AutoSeedCoverageAsync_SeedsAMinimalDatasetWithoutViolatingReferentialIntegrityOrUniqueness()
+    {
+        using ContosoUniversityContext context = new(SchemaTestSupport.UniqueDatabaseName());
+
+        IReadOnlyDictionary<string, int> result = await context.AutoSeedCoverageAsync();
+
+        Assert.True(result.Values.Sum() < 100, $"expected a small dataset, got {result.Values.Sum()} rows.");
+        SchemaTestSupport.AssertReferentialIntegrityHolds(context);
+
+        List<string> departmentNames = await context.Departments.Select(department => department.Name).ToListAsync();
+        Assert.Equal(departmentNames.Count, departmentNames.Distinct(StringComparer.Ordinal).Count());
+
+        HashSet<Grade> grades = [.. (await context.Enrollments.Select(enrollment => enrollment.Grade).ToListAsync())
+            .Where(grade => grade is not null)
+            .Select(grade => grade!.Value)];
+        Assert.Equal(Enum.GetValues<Grade>().Length, grades.Count);
+
+        List<int> instructorIds = await context.Instructors.Select(instructor => instructor.Id).ToListAsync();
+        List<int> officeAssignmentInstructorIds = await context.OfficeAssignments.Select(office => office.InstructorId).ToListAsync();
+        Assert.Equal(instructorIds.Count, officeAssignmentInstructorIds.Distinct().Count());
+    }
+
+    [Fact]
     public async Task AutoSeedAsync_WithTheSameSeed_ProducesTheSameRowCounts()
     {
         using ContosoUniversityContext first = new(SchemaTestSupport.UniqueDatabaseName());

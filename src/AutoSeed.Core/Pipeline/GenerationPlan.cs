@@ -68,7 +68,7 @@ public sealed class GenerationPlan
             }
 
             IEntityType driver = driverEdge.Principal;
-            IReadOnlyList<int> childCounts = IsSharedPrimaryKey(entityType, driverEdge.ForeignKey)
+            IReadOnlyList<int> childCounts = SharedPrimaryKey.IsDependent(entityType, driverEdge.ForeignKey)
                 ? Enumerable.Repeat(1, rowCounts[driver]).ToArray()
                 : DrawChildCounts(entityType, rowCounts[driver], random);
 
@@ -78,19 +78,6 @@ public sealed class GenerationPlan
         }
 
         return plan;
-    }
-
-    /// <summary>
-    /// A dependent whose entire primary key is that same required foreign key (an extension-table
-    /// or shared-primary-key one-to-one, like an <c>OfficeAssignment</c> keyed by <c>InstructorId</c>)
-    /// can have at most one row per principal row: the primary key would collide otherwise. Every
-    /// principal row gets exactly one dependent row instead of drawing from the long-tail
-    /// distribution, since no null-rate mechanism exists yet to leave some principals without one.
-    /// </summary>
-    private static bool IsSharedPrimaryKey(IEntityType entityType, IForeignKey foreignKey)
-    {
-        IKey? primaryKey = entityType.FindPrimaryKey();
-        return primaryKey is not null && primaryKey.Properties.ToHashSet().SetEquals(foreignKey.Properties);
     }
 
     private IReadOnlyList<int> DrawChildCounts(IEntityType entityType, int driverRowCount, SeededRandom random)
