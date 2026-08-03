@@ -134,9 +134,11 @@ Bypassing EF means AutoSeed itself must assign identity primary keys (sequential
 
 ### Why statistics-only capture
 
-Shape capture reads row counts, cardinality and distribution histograms. It never reads a row.
+Shape capture reads a row count per table, today, from the database engine's own maintained counters (`sys.dm_db_partition_stats` on SQL Server, `pg_class.reltuples` on PostgreSQL). Never a query against an actual row. Cardinality and distribution histograms are a documented gap, not yet built; see the roadmap.
 
 This is privacy by construction rather than by policy: the captured file contains no personal data because no personal data is ever read. That distinction is what makes the feature usable inside a regulated company.
+
+It also surfaces a real SQL Server permission subtlety worth knowing if you run capture under a locked-down login: `sys.dm_db_partition_stats` hides a table's rows entirely from a principal with no visibility into it, even with `VIEW DATABASE STATE` granted at the database level. `VIEW DEFINITION` on the table, granted alongside a `SELECT` deny, restores that visibility without granting any access to the table's actual data: schema-only, by design. PostgreSQL has no equivalent restriction; `pg_class` (unlike the per-table-filtered `pg_stats`) is readable by any authenticated role regardless of table grants.
 
 ### Why `net8.0` and `net10.0` only, for now
 
@@ -149,7 +151,7 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity and fast mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `AutoSeedFastAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`, a published benchmark comparing fidelity and fast mode.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity and fast mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `AutoSeedFastAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`, a published benchmark comparing fidelity and fast mode, row-count-only production shape capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`).
 
 **v2: depth**
 Fast mode support for inheritance, owned types, foreign-key cycles and non-`int` identity keys; an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable; compound filter shapes; more correlated-property pairs.
@@ -158,7 +160,7 @@ Fast mode support for inheritance, owned types, foreign-key cycles and non-`int`
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
 
 **v4: shape**
-Production shape capture and apply.
+Per-column shape statistics (null fraction, distinct count, value histograms), applied to value generation, not just row counts. `AutoSeedFromShapeAsync` for fast mode.
 
 **v5: refinements**
 Dirty data mode (accents, trailing whitespace, inconsistent casing). xUnit and Testcontainers integration. A Roslyn analyzer flagging unseedable models at compile time. First-class pt-BR locale with valid CPF, CNPJ and postal codes. `netstandard2.0`, if asked for.

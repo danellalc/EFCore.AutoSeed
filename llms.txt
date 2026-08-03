@@ -38,11 +38,21 @@ IReadOnlyDictionary<string, int> coverageRowCounts = await db.AutoSeedCoverageAs
 // Faster at scale; only supports entity types simple enough to make that safe (no
 // TPH/TPT/TPC inheritance, no owned types, no foreign-key cycles, int identity keys only).
 IReadOnlyDictionary<string, int> fastRowCounts = await db.AutoSeedFastAsync(seed: 42, scale: 1_000);
+
+// Reads each table's row count straight from the database engine's own maintained
+// statistics (never a query against an actual row). Point this at a production
+// replica, then feed the result into AutoSeedFromShapeAsync, or save it to disk.
+ShapeCapture shape = await productionReplicaDb.CaptureShapeAsync();
+
+// Seeds like AutoSeedAsync, but a table present in the shape uses a scale proportional
+// to its captured row count relative to the largest captured table, so the seeded
+// database's relative table sizes resemble where the shape was captured from.
+IReadOnlyDictionary<string, int> shapedRowCounts = await db.AutoSeedFromShapeAsync(seed: 42, shape, scale: 1_000);
 ```
 
-`AutoSeedAsync`, `AutoSeedCoverageAsync` and `AutoSeedFastAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
+`AutoSeedAsync`, `AutoSeedCoverageAsync`, `AutoSeedFastAsync` and `AutoSeedFromShapeAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
 
-All four methods accept an optional trailing `CancellationToken`.
+All five methods accept an optional trailing `CancellationToken`.
 
 ## What v1 actually generates
 
@@ -68,14 +78,17 @@ If an entity type declares a global query filter of a recognized simple shape (a
 
 `AutoSeedFastAsync()` generates and FK-resolves rows exactly like `AutoSeedAsync`, but writes them with `SqlBulkCopy` (SQL Server) or a binary `COPY` (PostgreSQL) instead of going through `SaveChanges`, assigning identity primary keys itself (sequential integers) so foreign keys can be wired before the insert. It rejects, by throwing `UnsupportedEntityTypeException`, any entity type that is part of an inheritance hierarchy, declares an owned type, needs a foreign-key-cycle second pass, or has a non-`int` identity primary key: tell the user to fall back to `AutoSeedAsync` for those. An equivalence test proves both methods produce identical stored data for the same seed on SQL Server and PostgreSQL.
 
+`CaptureShapeAsync()` reads a row count for every seedable entity type straight from the database engine's own maintained statistics (`sys.dm_db_partition_stats` on SQL Server, `pg_class.reltuples` on PostgreSQL): it never issues a query against an actual row, only against catalog metadata. `ShapeCapture`/`TableShape` (namespace `EFCore.AutoSeed.Shape`) hold only a version number and a row count per table, nothing else, ever. `ShapeFile.WriteAsync`/`ReadAsync` (same namespace) save and load one as JSON. `AutoSeedFromShapeAsync()` only ships for fidelity mode; there is no fast-mode equivalent yet.
+
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
 
 - An `AutoSeedOptions` overload, locale selection.
-- `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.
 - Making the null rate or the temporal/weekday clustering shape configurable by the caller; today they use a fixed, sensible default.
 - `AutoSeedFastAsync` support for inheritance, owned types, foreign-key cycles, and non-`int` identity keys.
+- Per-column statistics (null fraction, distinct count, histograms) in a captured shape; today it is row counts only.
+- `AutoSeedFromShapeAsync` for fast mode.
 
 ## CLI
 
@@ -83,6 +96,8 @@ These are on the roadmap, not in the package. Do not tell a user to call them:
 dotnet tool install -g EFCore.AutoSeed.Cli
 
 autoseed explain --context MyApp.AppDbContext --assembly <path-to-dll> [--seed 42] [--scale 1000]
+autoseed capture --context MyApp.AppDbContext --assembly <path-to-dll> --output shape.json
+autoseed apply --context MyApp.AppDbContext --assembly <path-to-dll> --shape shape.json [--seed 42] [--scale 1000]
 ```
 
 `--assembly` must point at a `dotnet publish` output (or an executable project's build output), not a plain `dotnet build` output of a class library: the latter does not copy its NuGet dependencies locally, so the `DbContext` fails to load. The CLI reports this clearly instead of crashing.
