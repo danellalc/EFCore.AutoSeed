@@ -118,6 +118,17 @@ Property-based tests assert that for **any** model and **any** seed, every forei
 
 Also tested against 4 real, public schemas: Northwind, Chinook, Contoso University and a lite AdventureWorks OLTP subset. Composite keys, self-references, shared-primary-key one-to-ones and many-to-many join tables included.
 
+## Benchmarks
+
+A single local run, containerized SQL Server, three-table schema (`Customer` &rarr; `Order` &rarr; `OrderItem`), `AutoSeedAsync` (fidelity mode) against `AutoSeedFastAsync` (bulk insert):
+
+| Root rows | Fidelity mode | Fast mode | Speedup |
+|---|---|---|---|
+| 1,000 | 6.0 s | 0.6 s | ~10x |
+| 5,000 | 25.9 s | 3.0 s | ~9x |
+
+Fast mode also allocates about 60% less managed memory at both scales. These are directional numbers from one machine, one schema, three iterations each, not a rigorous multi-environment study: the point is the order of magnitude, not the second decimal place. Reproduce them yourself, or run your own shape, with `dotnet run -c Release` in `tests/AutoSeed.Benchmarks`.
+
 ## Compared to
 
 | Package | Approach | Last release |

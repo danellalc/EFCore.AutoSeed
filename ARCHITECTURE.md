@@ -130,6 +130,8 @@ An equivalence test asserts both modes produce identical data for the same seed.
 
 Bypassing EF means AutoSeed itself must assign identity primary keys (sequential integers, matching what an auto-increment column would produce against an empty table) so foreign keys can be wired before the insert happens. That, in turn, is why fast mode only supports entity types simple enough for this to be safe: a single-column `int` identity key, no inheritance, no owned types, no foreign-key cycles. Anything else throws a named exception pointing back at `AutoSeedAsync` rather than risk quietly writing wrong data.
 
+`tests/AutoSeed.Benchmarks` (BenchmarkDotNet) measures both modes against a real, containerized SQL Server on the same three-table schema the equivalence test uses. One local run: fast mode finished about 10x faster at 1,000 root rows (0.6 s versus 6.0 s) and about 9x faster at 5,000 (3.0 s versus 25.9 s), allocating roughly 60% less managed memory both times. Numbers in the [README](README.md#benchmarks); rerun locally before quoting them as anything more than directional.
+
 ### Why statistics-only capture
 
 Shape capture reads row counts, cardinality and distribution histograms. It never reads a row.
@@ -147,10 +149,10 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity and fast mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `AutoSeedFastAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity and fast mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `AutoSeedFastAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`, a published benchmark comparing fidelity and fast mode.
 
 **v2: depth**
-Fast mode support for inheritance, owned types, foreign-key cycles and non-`int` identity keys; an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable; compound filter shapes; more correlated-property pairs; published benchmarks.
+Fast mode support for inheritance, owned types, foreign-key cycles and non-`int` identity keys; an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable; compound filter shapes; more correlated-property pairs.
 
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
