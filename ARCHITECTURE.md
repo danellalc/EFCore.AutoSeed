@@ -135,7 +135,7 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
 
 **v2: depth**
 Bulk insert with equivalence test, TPH/TPT/TPC, query filters, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
@@ -143,8 +143,8 @@ Bulk insert with equivalence test, TPH/TPT/TPC, query filters, full distribution
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
 
-**v4: coverage and shape**
-Coverage mode. Production shape capture and apply.
+**v4: shape**
+Production shape capture and apply.
 
 **v5: refinements**
 Dirty data mode (accents, trailing whitespace, inconsistent casing). xUnit and Testcontainers integration. A Roslyn analyzer flagging unseedable models at compile time. First-class pt-BR locale with valid CPF, CNPJ and postal codes. `netstandard2.0`, if asked for.

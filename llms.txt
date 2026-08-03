@@ -27,11 +27,16 @@ IReadOnlyDictionary<string, int> rowCounts = await db.AutoSeedAsync(seed: 42, sc
 // without writing anything to the database.
 AutoSeedExplainResult plan = await db.AutoSeedExplainAsync(seed: 42, scale: 1_000);
 Console.WriteLine(plan.ToReport());
+
+// The smallest dataset that touches every enum value, every nullable state, every
+// relationship cardinality (zero/one/many) and every string length boundary. No seed
+// or scale: row counts are structural, not scaled. Usually under 50 rows.
+IReadOnlyDictionary<string, int> coverageRowCounts = await db.AutoSeedCoverageAsync();
 ```
 
-`AutoSeedAsync` returns the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
+`AutoSeedAsync` and `AutoSeedCoverageAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
 
-Both methods accept an optional trailing `CancellationToken`.
+All three methods accept an optional trailing `CancellationToken`.
 
 ## What v1 actually generates
 
@@ -45,11 +50,12 @@ Owned types (EF Core's `OwnsOne`, including nested owned types) get their own co
 
 Child row counts follow a long-tail distribution (most parents have few children, a few have many), stable for a given seed.
 
+`AutoSeedCoverageAsync()` uses a different, deterministic (not seeded by the caller) value strategy: every enum property cycles through its own declared values, every nullable property is left null on an entity type's first row and populated on every other row, every string cycles through empty/one-character/maximum-length, and every relationship gets a driver row with zero, one and more than one dependent. It does not aim for realism, only coverage, and shares the same referential-integrity and uniqueness handling as `AutoSeedAsync`.
+
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
 
-- `AutoSeedCoverageAsync()` / coverage mode.
 - An `AutoSeedOptions` overload, locale selection, a fast/bulk insertion mode.
 - Global query filters and TPH/TPT/TPC inheritance are not specifically handled.
 - `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.

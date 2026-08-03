@@ -79,6 +79,18 @@ dotnet tool install -g EFCore.AutoSeed.Cli
 autoseed explain --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll
 ```
 
+### Coverage mode
+
+The opposite of bulk. The *smallest* dataset that exercises everything:
+
+```csharp
+await db.AutoSeedCoverageAsync();
+```
+
+Every enum value. Every nullable property in both states. Every relationship at zero, one and many. Every string at empty, one character and maximum length. No seed or scale to configure: the row counts are structural, not scaled.
+
+Usually under 50 rows. The dataset unit tests want and nobody assembles by hand without forgetting half of it.
+
 ## Supported frameworks
 
 | Target | Status |
@@ -124,11 +136,10 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, `AutoSeedAsync`/`AutoSeedExplainAsync`, and `autoseed explain`.
+Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`, and `autoseed explain`.
 
 Not shipped yet:
 
-- **Coverage mode** (`AutoSeedCoverageAsync`): the smallest dataset that touches every enum value, every subtype, every nullable state and every cardinality edge.
 - **Bulk insert** (`SqlBulkCopy`, PostgreSQL binary `COPY`) as a faster alternative to the current EF-tracked insert, with a test proving both modes produce equivalent data.
 - **TPH/TPT/TPC inheritance** and **global query filters**.
 - **Full distributions**: weekday/business-hour clustering, a configurable null rate, correlated properties.
