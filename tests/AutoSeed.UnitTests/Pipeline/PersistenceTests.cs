@@ -149,6 +149,30 @@ public sealed class PersistenceTests
     }
 
     [Fact]
+    public async Task InsertAsync_WithACompositeForeignKeyIntoACompositePrimaryKey_CopiesBothColumnsFromTheSameParentRow()
+    {
+        using IsolatedCompositeForeignKeyContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 20, SeededRandom.FromRootSeed(11));
+
+        Dictionary<string, object> GenerateOfficeNumber(IEntityType entityType, SeededRandom random) =>
+            entityType.ClrType == typeof(Office)
+                ? new Dictionary<string, object> { ["Number"] = random.Next(0, 1_000_000) }
+                : [];
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateOfficeNumber, SeededRandom.FromRootSeed(11), CancellationToken.None);
+
+        HashSet<(int RegionId, int Number)> officeKeys = [.. (await context.Offices.ToListAsync())
+            .Select(office => (office.RegionId, office.Number))];
+
+        List<OfficeEmployee> employees = await context.Employees.ToListAsync();
+        Assert.NotEmpty(employees);
+        Assert.All(employees, employee => Assert.Contains((employee.OfficeRegionId, employee.OfficeNumber), officeKeys));
+    }
+
+    [Fact]
     public async Task InsertAsync_WithNullArguments_ThrowsArgumentNullException()
     {
         using IsolatedLinearChainContext context = new(UniqueDatabaseName());
@@ -230,6 +254,48 @@ public sealed class PersistenceTests
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
             optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class IsolatedCompositeForeignKeyContext(string databaseName) : DbContext
+    {
+        public DbSet<Region> Regions => Set<Region>();
+        public DbSet<Office> Offices => Set<Office>();
+        public DbSet<OfficeEmployee> Employees => Set<OfficeEmployee>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Office>().HasKey(office => new { office.RegionId, office.Number });
+
+            modelBuilder.Entity<OfficeEmployee>()
+                .HasOne(employee => employee.Office)
+                .WithMany()
+                .HasForeignKey(employee => new { employee.OfficeRegionId, employee.OfficeNumber })
+                .HasPrincipalKey(office => new { office.RegionId, office.Number });
+        }
+    }
+
+    private sealed class Region
+    {
+        public int Id { get; set; }
+        public List<Office> Offices { get; set; } = [];
+    }
+
+    private sealed class Office
+    {
+        public int RegionId { get; set; }
+        public Region Region { get; set; } = null!;
+        public int Number { get; set; }
+    }
+
+    private sealed class OfficeEmployee
+    {
+        public int Id { get; set; }
+        public int OfficeRegionId { get; set; }
+        public int OfficeNumber { get; set; }
+        public Office Office { get; set; } = null!;
     }
 
     private sealed class NoParameterlessConstructorEntity

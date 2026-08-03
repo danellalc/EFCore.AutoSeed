@@ -105,10 +105,12 @@ public sealed class Persistence
         for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             object instance = CreateInstance(entityType);
+            Dictionary<string, object> deferredValues = ApplyValuesBeforeTracking(entityType, instance, rows[rowIndex]);
+            AssignRequiredForeignKeysBeforeTracking(entityType, requiredEdges, entityPlan, instance, rowIndex, driverRowIndices, insertedByEntityType);
+
             context.Add(instance);
-            ApplyValues(context, instance, rows[rowIndex]);
+            ApplyDeferredValues(context, instance, deferredValues);
             AssignOwnedTypes(context, entityType, instance, entityRandom.Derive(rowIndex), generateRow);
-            AssignRequiredForeignKeys(context, requiredEdges, entityType, entityPlan, instance, rowIndex, driverRowIndices, insertedByEntityType);
             instances.Add(instance);
         }
 
@@ -116,10 +118,47 @@ public sealed class Persistence
         return instances;
     }
 
-    private static void AssignRequiredForeignKeys(
-        DbContext context,
-        IReadOnlyList<GraphEdge> requiredEdges,
+    /// <summary>
+    /// A property with two columns as a composite primary key, one of them also a foreign key, is
+    /// tracked with a half-formed key (the foreign key column still at its CLR default) the moment
+    /// <see cref="DbContext.Add(object)"/> runs. Setting the foreign key afterward, through
+    /// <see cref="EntityEntry"/>, is a key change EF Core's identity map validates immediately, and
+    /// two rows sharing that same half-formed key collide before either ever gets its real value.
+    /// Everything that can be set through reflection happens on the plain, untracked instance
+    /// first, so <see cref="DbContext.Add(object)"/> only ever sees a fully-formed key. Only shadow
+    /// properties (no backing CLR member) fall back to being set after tracking begins.
+    /// </summary>
+    private static Dictionary<string, object> ApplyValuesBeforeTracking(IEntityType entityType, object instance, Dictionary<string, object> values)
+    {
+        Dictionary<string, object> deferredValues = [];
+
+        foreach (KeyValuePair<string, object> entry in values)
+        {
+            PropertyInfo? propertyInfo = entityType.FindProperty(entry.Key)?.PropertyInfo;
+            if (propertyInfo is not null && propertyInfo.CanWrite)
+            {
+                propertyInfo.SetValue(instance, entry.Value);
+            }
+            else
+            {
+                deferredValues[entry.Key] = entry.Value;
+            }
+        }
+
+        return deferredValues;
+    }
+
+    private static void ApplyDeferredValues(DbContext context, object instance, Dictionary<string, object> deferredValues)
+    {
+        foreach (KeyValuePair<string, object> entry in deferredValues)
+        {
+            context.Entry(instance).Property(entry.Key).CurrentValue = entry.Value;
+        }
+    }
+
+    private static void AssignRequiredForeignKeysBeforeTracking(
         IEntityType entityType,
+        IReadOnlyList<GraphEdge> requiredEdges,
         EntityGenerationPlan entityPlan,
         object instance,
         int rowIndex,
@@ -144,7 +183,31 @@ public sealed class Persistence
                 ? principalInstances[driverRowIndices[rowIndex]]
                 : principalInstances[rowIndex % principalInstances.Count];
 
-            AssignForeignKey(context, edge, instance, principalInstance);
+            AssignForeignKeyBeforeTracking(edge, instance, principalInstance);
+        }
+    }
+
+    private static void AssignForeignKeyBeforeTracking(GraphEdge edge, object dependentInstance, object principalInstance)
+    {
+        if (edge.ForeignKey.DependentToPrincipal?.PropertyInfo is PropertyInfo navigationProperty && navigationProperty.CanWrite)
+        {
+            navigationProperty.SetValue(dependentInstance, principalInstance);
+            return;
+        }
+
+        IReadOnlyList<IProperty> dependentProperties = edge.ForeignKey.Properties;
+        IReadOnlyList<IProperty> principalProperties = edge.ForeignKey.PrincipalKey.Properties;
+
+        for (int index = 0; index < dependentProperties.Count; index++)
+        {
+            if (principalProperties[index].PropertyInfo is not PropertyInfo principalProperty
+                || dependentProperties[index].PropertyInfo is not PropertyInfo dependentProperty
+                || !dependentProperty.CanWrite)
+            {
+                continue;
+            }
+
+            dependentProperty.SetValue(dependentInstance, principalProperty.GetValue(principalInstance));
         }
     }
 
@@ -229,14 +292,6 @@ public sealed class Persistence
     private static IEnumerable<INavigation> GetOwnedReferenceNavigations(IEntityType entityType) =>
         entityType.GetNavigations()
             .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership && navigation.ForeignKey.PrincipalEntityType == entityType);
-
-    private static void ApplyValues(DbContext context, object instance, Dictionary<string, object> values)
-    {
-        foreach (KeyValuePair<string, object> entry in values)
-        {
-            context.Entry(instance).Property(entry.Key).CurrentValue = entry.Value;
-        }
-    }
 
     private static object CreateInstance(IEntityType entityType)
     {

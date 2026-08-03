@@ -65,6 +65,23 @@ public sealed class GenerationPlanTests
     }
 
     [Fact]
+    public void Plan_ForASharedPrimaryKeyOneToOne_GivesExactlyOneDependentRowPerPrincipalRow()
+    {
+        using SharedPrimaryKeyContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan(meanChildrenPerParent: 3.0).Plan(order, read.Edges, scale: 50, SeededRandom.FromRootSeed(42));
+
+        int instructorCount = Single(plan, "Instructor").RowCount;
+        EntityGenerationPlan officeAssignmentPlan = Single(plan, "OfficeAssignment");
+
+        Assert.Equal(instructorCount, officeAssignmentPlan.RowCount);
+        Assert.NotNull(officeAssignmentPlan.ChildCountsByDriverRow);
+        Assert.All(officeAssignmentPlan.ChildCountsByDriverRow!, count => Assert.Equal(1, count));
+    }
+
+    [Fact]
     public void Plan_WithNullArguments_ThrowsArgumentNullException()
     {
         using LinearChainContext context = new();

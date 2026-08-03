@@ -301,3 +301,33 @@ public sealed class TriangleZ
     public int XId { get; set; }
     public TriangleX X { get; set; } = null!;
 }
+
+public sealed class SharedPrimaryKeyContext : DbContext
+{
+    public DbSet<Instructor> Instructors => Set<Instructor>();
+    public DbSet<OfficeAssignment> OfficeAssignments => Set<OfficeAssignment>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OfficeAssignment>().HasKey(office => office.InstructorId);
+        modelBuilder.Entity<Instructor>()
+            .HasOne(instructor => instructor.OfficeAssignment)
+            .WithOne(office => office.Instructor)
+            .HasForeignKey<OfficeAssignment>(office => office.InstructorId);
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(SharedPrimaryKeyContext));
+}
+
+public sealed class Instructor
+{
+    public int Id { get; set; }
+    public OfficeAssignment? OfficeAssignment { get; set; }
+}
+
+public sealed class OfficeAssignment
+{
+    public int InstructorId { get; set; }
+    public Instructor Instructor { get; set; } = null!;
+}

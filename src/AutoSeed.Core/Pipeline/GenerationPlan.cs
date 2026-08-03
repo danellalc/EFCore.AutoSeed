@@ -47,34 +47,50 @@ public sealed class GenerationPlan
             throw new ArgumentOutOfRangeException(nameof(scale), scale, "Must be positive.");
         }
 
-        ILookup<IEntityType, IEntityType> requiredPrincipalsByDependent = edges
+        ILookup<IEntityType, GraphEdge> requiredEdgesByDependent = edges
             .Where(edge => edge.ForeignKey.IsRequired)
-            .ToLookup(edge => edge.Dependent, edge => edge.Principal);
+            .ToLookup(edge => edge.Dependent);
 
         Dictionary<IEntityType, int> rowCounts = [];
         List<EntityGenerationPlan> plan = new(order.Count);
 
         foreach (IEntityType entityType in order)
         {
-            IEntityType? driver = requiredPrincipalsByDependent[entityType]
-                .Distinct()
-                .OrderBy(principal => principal.Name, StringComparer.Ordinal)
+            GraphEdge? driverEdge = requiredEdgesByDependent[entityType]
+                .OrderBy(edge => edge.Principal.Name, StringComparer.Ordinal)
                 .FirstOrDefault();
 
-            if (driver is null)
+            if (driverEdge is null)
             {
                 rowCounts[entityType] = scale;
                 plan.Add(new EntityGenerationPlan(entityType, scale, null, null));
                 continue;
             }
 
-            IReadOnlyList<int> childCounts = DrawChildCounts(entityType, rowCounts[driver], random);
+            IEntityType driver = driverEdge.Principal;
+            IReadOnlyList<int> childCounts = IsSharedPrimaryKey(entityType, driverEdge.ForeignKey)
+                ? Enumerable.Repeat(1, rowCounts[driver]).ToArray()
+                : DrawChildCounts(entityType, rowCounts[driver], random);
+
             int rowCount = childCounts.Sum();
             rowCounts[entityType] = rowCount;
             plan.Add(new EntityGenerationPlan(entityType, rowCount, driver, childCounts));
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// A dependent whose entire primary key is that same required foreign key (an extension-table
+    /// or shared-primary-key one-to-one, like an <c>OfficeAssignment</c> keyed by <c>InstructorId</c>)
+    /// can have at most one row per principal row: the primary key would collide otherwise. Every
+    /// principal row gets exactly one dependent row instead of drawing from the long-tail
+    /// distribution, since no null-rate mechanism exists yet to leave some principals without one.
+    /// </summary>
+    private static bool IsSharedPrimaryKey(IEntityType entityType, IForeignKey foreignKey)
+    {
+        IKey? primaryKey = entityType.FindPrimaryKey();
+        return primaryKey is not null && primaryKey.Properties.ToHashSet().SetEquals(foreignKey.Properties);
     }
 
     private IReadOnlyList<int> DrawChildCounts(IEntityType entityType, int driverRowCount, SeededRandom random)
