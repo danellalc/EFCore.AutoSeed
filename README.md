@@ -136,12 +136,12 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, TPH/TPT/TPC inheritance, global query filter bias, `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`, and `autoseed explain`.
+Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a default null rate for nullable columns, a `Total`/`Quantity` correlation, `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`, and `autoseed explain`.
 
 Not shipped yet:
 
 - **Bulk insert** (`SqlBulkCopy`, PostgreSQL binary `COPY`) as a faster alternative to the current EF-tracked insert, with a test proving both modes produce equivalent data.
-- **Full distributions**: weekday/business-hour clustering, a configurable null rate, correlated properties.
+- **Configurable distributions**: today's null rate and temporal clustering use a fixed, sensible default; making them caller-configurable needs the `AutoSeedOptions` overload first.
 - **Production shape capture and apply** (`autoseed capture`/`autoseed apply`): reproduce production's row counts and value distribution locally from statistics only, never a data row.
 
 Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).

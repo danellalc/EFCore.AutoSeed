@@ -40,7 +40,11 @@ All three methods accept an optional trailing `CancellationToken`.
 
 ## What v1 actually generates
 
-Semantic inference rules match on property name suffix and CLR type: `FirstName`/`LastName`/`FullName`, `Email`/`EmailAddress`, `Cpf`/`Cnpj` (Brazilian documents, valid check digits), `PostalCode`/`Cep`/`ZipCode`/`Zip`, `Phone`/`Mobile`/`PhoneNumber`/`MobileNumber`, `Price`/`Amount`/`Total`/`Balance` (decimal, respects precision/scale), `Url`/`Uri`/`Link`, `Slug`, `IpAddress`/`IpV4Address`, `CreatedAt`/`UpdatedAt`/`DeletedAt` (kept in chronological order relative to each other).
+Semantic inference rules match on property name suffix and CLR type: `FirstName`/`LastName`/`FullName`, `Email`/`EmailAddress`, `Cpf`/`Cnpj` (Brazilian documents, valid check digits), `PostalCode`/`Cep`/`ZipCode`/`Zip`, `Phone`/`Mobile`/`PhoneNumber`/`MobileNumber`, `Price`/`Amount`/`Balance` (decimal, respects precision/scale), `Quantity`/`Qty` (a small positive integer, not the generic fallback's much wider range), `Url`/`Uri`/`Link`, `Slug`, `IpAddress`/`IpV4Address`, `CreatedAt`/`UpdatedAt`/`DeletedAt` (kept in chronological order relative to each other, biased toward weekdays and business hours instead of spread uniformly across the whole window).
+
+A `Total`/`Subtotal`/`LineTotal`-suffixed decimal is computed as the product of a same-row `Price`-suffixed and `Quantity`-suffixed value when both exist, clamped to its own precision; otherwise it falls back to the same independent draw as `Price`/`Amount`/`Balance`.
+
+A nullable, non-foreign-key property is left null on about 10% of rows instead of always getting a value, unless the claiming rule already controls its own nullability (a query-filter-governed property, say).
 
 Every other property gets a value too, from a generic fallback keyed only on CLR type, not name: any unmatched `string` gets a short generated phrase, any unmatched numeric type (`int`, `long`, `short`, `byte`, `float`, `double`, `decimal`) gets a small non-negative number, `bool` gets true or false, any `enum` gets one of its own declared values, `Guid` gets a seeded (not random) value. Primary keys and other database-generated columns are left alone.
 
@@ -62,7 +66,7 @@ These are on the roadmap, not in the package. Do not tell a user to call them:
 
 - An `AutoSeedOptions` overload, locale selection, a fast/bulk insertion mode.
 - `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.
-- A configurable null rate or temporal/weekday clustering for generated values.
+- Making the null rate or the temporal/weekday clustering shape configurable by the caller; today they use a fixed, sensible default.
 
 ## CLI
 

@@ -71,6 +71,16 @@ If the model declares `HasQueryFilter(x => !x.IsDeleted)` and AutoSeed generates
 
 AutoSeed parses the filter's expression tree and, for the common single-property shapes (`!x.IsDeleted`, `x.IsActive`, `x.Flag == true`/`== false`, `x.DeletedAt == null`), biases that property so about 90% of rows pass the filter. A filter of any other shape (compound, multi-property) is left alone: the property falls through to whatever other rule would otherwise infer it. Not configurable yet; see the roadmap.
 
+### Distributions
+
+`AutoSeed.Distributions` holds the statistical shapes other stages draw from, kept separate so they can be swapped or tuned without touching the rules that use them:
+
+- **Temporal clustering**: a timestamp drawn uniformly across a multi-year window looks nothing like real traffic, which clusters on weekdays during business hours. Every `CreatedAt`/`UpdatedAt`/`DeletedAt`-style draw goes through a sampler biased toward Monday-Friday, 09:00-18:00, then clamps back into the caller's window so the existing chronological-ordering guarantee never breaks.
+- **Null rate**: a nullable column that is populated on every single generated row is not realistic; production data has gaps. After inference runs, any nullable, non-foreign-key property gets its value discarded on about 10% of rows, unless the rule that claimed it already controls its own nullability (the query filter rule, which already decides pass-or-fail per row).
+- **Correlated properties**: `AutoSeed.Inference` reads sibling values through the same `generatedValues` dictionary the query filter and email rules already use. A `Total`/`Subtotal`/`LineTotal` property is computed from a same-row `Price`-suffixed and `Quantity`-suffixed value when both exist, instead of an independent draw that would never add up.
+
+None of this is configurable by the caller yet: the rates and windows are fixed, sensible defaults. Configurability needs the `AutoSeedOptions` overload first; see the roadmap.
+
 ### Existing data
 
 Seeding into a database that already has rows means foreign keys may reference either new rows or pre-existing ones. AutoSeed reads existing keys before planning.
@@ -135,10 +145,10 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
 
 **v2: depth**
-Bulk insert with equivalence test, configurable query filter bias and compound filter shapes, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
+Bulk insert with equivalence test, an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable, compound filter shapes, more correlated-property pairs, published benchmarks.
 
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
