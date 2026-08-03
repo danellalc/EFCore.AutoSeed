@@ -136,12 +136,11 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, TPH/TPT/TPC inheritance, `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`, and `autoseed explain`.
+Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, TPH/TPT/TPC inheritance, global query filter bias, `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`, and `autoseed explain`.
 
 Not shipped yet:
 
 - **Bulk insert** (`SqlBulkCopy`, PostgreSQL binary `COPY`) as a faster alternative to the current EF-tracked insert, with a test proving both modes produce equivalent data.
-- **Global query filters**: generated data does not yet bias toward passing a model's own query filter.
 - **Full distributions**: weekday/business-hour clustering, a configurable null rate, correlated properties.
 - **Production shape capture and apply** (`autoseed capture`/`autoseed apply`): reproduce production's row counts and value distribution locally from statistics only, never a data row.
 

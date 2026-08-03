@@ -54,12 +54,13 @@ Child row counts follow a long-tail distribution (most parents have few children
 
 `AutoSeedCoverageAsync()` uses a different, deterministic (not seeded by the caller) value strategy: every enum property cycles through its own declared values, every nullable property is left null on an entity type's first row and populated on every other row, every string cycles through empty/one-character/maximum-length, and every relationship gets a driver row with zero, one and more than one dependent. It does not aim for realism, only coverage, and shares the same referential-integrity and uniqueness handling as `AutoSeedAsync`.
 
+If an entity type declares a global query filter of a recognized simple shape (a single property: `e => !e.IsDeleted`, `e => e.IsActive`, `e => e.Flag == true`/`== false`, `e => e.DeletedAt == null`), that property is biased so about 90% of generated rows pass the filter, instead of a filtered-out row being just as likely as a visible one. Any other filter shape (compound, multi-property) is left alone and the property falls through to whatever other rule would otherwise claim it.
+
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
 
 - An `AutoSeedOptions` overload, locale selection, a fast/bulk insertion mode.
-- Global query filters are not specifically handled: a filtered-out row can be generated as easily as a visible one.
 - `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.
 - A configurable null rate or temporal/weekday clustering for generated values.
 

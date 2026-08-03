@@ -69,7 +69,7 @@ Value converters (enum as string, strongly-typed IDs) require generating the CLR
 
 If the model declares `HasQueryFilter(x => !x.IsDeleted)` and AutoSeed generates 50% deleted rows, the application opens and sees almost nothing.
 
-AutoSeed reads the filter and respects its intent: the overwhelming majority of rows are visible, with a small configurable proportion filtered out.
+AutoSeed parses the filter's expression tree and, for the common single-property shapes (`!x.IsDeleted`, `x.IsActive`, `x.Flag == true`/`== false`, `x.DeletedAt == null`), biases that property so about 90% of rows pass the filter. A filter of any other shape (compound, multi-property) is left alone: the property falls through to whatever other rule would otherwise infer it. Not configurable yet; see the roadmap.
 
 ### Existing data
 
@@ -135,10 +135,10 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
 
 **v2: depth**
-Bulk insert with equivalence test, query filters, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
+Bulk insert with equivalence test, configurable query filter bias and compound filter shapes, full distribution engine (temporal clustering, null rates, correlation), published benchmarks.
 
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
