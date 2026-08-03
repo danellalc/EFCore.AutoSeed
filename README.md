@@ -61,7 +61,11 @@ OrderItem: 19.203 rows
 
 Most customers have one order. A few have hundreds, and the mean and the outliers stay the same across runs with the same seed.
 
-Weekday/business-hour clustering, a configurable null rate and correlated properties are next; see the [roadmap](#roadmap).
+Weekday/business-hour clustering, null rate, the query filter bias and locale are all configurable through an optional `AutoSeedOptions`:
+
+```csharp
+await db.AutoSeedAsync(seed: 42, scale: 1_000, options: new AutoSeedOptions(NullRate: 0.2, Locale: "pt_BR"));
+```
 
 ### It explains itself before it writes anything
 
@@ -99,7 +103,7 @@ await db.AutoSeedFastAsync(seed: 42, scale: 1_000);
 
 Same generated data as `AutoSeedAsync` for the same seed, an equivalence test proves it, but written with `SqlBulkCopy` (SQL Server) or a binary `COPY` (PostgreSQL) instead of `SaveChanges`. See [Benchmarks](#benchmarks) below for actual numbers.
 
-Only entity types simple enough to make bypassing EF Core safe are supported: an inherited or owned entity type, a foreign-key cycle, or a non-`int` identity primary key fails loudly and points back at `AutoSeedAsync`, instead of risking silently wrong data.
+Only entity types simple enough to make bypassing EF Core safe are supported: an inherited entity type or a foreign-key cycle fails loudly and points back at `AutoSeedAsync`, instead of risking silently wrong data. Owned types and `int`/`long`/`Guid` identity primary keys are supported.
 
 ### Production shape
 
@@ -173,12 +177,11 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules, long-tail cardinality for related rows, composite keys, owned types, TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a default null rate for nullable columns, a `Total`/`Quantity` correlation, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, and `autoseed explain`.
+Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, and `autoseed explain`.
 
 Not shipped yet:
 
-- **Bulk insert coverage**: `AutoSeedFastAsync` rejects TPH/TPT/TPC inheritance, owned types, foreign-key cycles and non-`int` identity keys today, falling back to `AutoSeedAsync` for those.
-- **Configurable distributions**: today's null rate and temporal clustering use a fixed, sensible default; making them caller-configurable needs the `AutoSeedOptions` overload first.
+- **Bulk insert coverage**: `AutoSeedFastAsync` still rejects TPH/TPT/TPC inheritance and foreign-key cycles, falling back to `AutoSeedAsync` for those.
 - **Per-column shape statistics**: a captured shape holds row counts only today; null fraction, distinct count and value histograms are not captured, so `AutoSeedFromShapeAsync` shapes relative table sizes, not value distributions. `AutoSeedFromShapeAsync` is also fidelity-mode only, no fast-mode equivalent yet.
 
 Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).

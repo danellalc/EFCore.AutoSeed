@@ -70,7 +70,7 @@ New inference rules and new distribution shapes ship with tests. Fast mode chang
 
 ## Commits
 
-Conventional commits in English. Scopes: `core`, `inference`, `distributions`, `coverage`, `shape`, `providers`, `cli`.
+Conventional commits in English. Scopes: `core`, `inference`, `distributions`, `coverage`, `shape`, `providers`, `cli`, `analyzers`.
 
 ```
 feat(core): resolve nullable foreign key cycles in two passes

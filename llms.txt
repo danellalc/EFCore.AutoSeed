@@ -36,8 +36,17 @@ IReadOnlyDictionary<string, int> coverageRowCounts = await db.AutoSeedCoverageAs
 // Same generated data as AutoSeedAsync for the same seed, written through a
 // database-specific bulk insert (SqlBulkCopy / binary COPY) instead of SaveChanges.
 // Faster at scale; only supports entity types simple enough to make that safe (no
-// TPH/TPT/TPC inheritance, no owned types, no foreign-key cycles, int identity keys only).
+// TPH/TPT/TPC inheritance, no foreign-key cycles). Owned types and int/long/Guid
+// identity keys are supported.
 IReadOnlyDictionary<string, int> fastRowCounts = await db.AutoSeedFastAsync(seed: 42, scale: 1_000);
+
+// AutoSeedAsync, AutoSeedFastAsync and AutoSeedFromShapeAsync all accept an optional
+// trailing AutoSeedOptions, tuning the query filter bias, null rate, temporal
+// clustering, locale (Bogus locale string, e.g. "pt_BR") and dirty-data noise
+// (casing/whitespace/diacritics on free-text values, off by default) without
+// replacing any inference rule.
+IReadOnlyDictionary<string, int> tunedRowCounts = await db.AutoSeedAsync(
+    seed: 42, scale: 1_000, options: new AutoSeedOptions(NullRate: 0.2, Locale: "pt_BR"));
 
 // Reads each table's row count straight from the database engine's own maintained
 // statistics (never a query against an actual row). Point this at a production
@@ -52,13 +61,13 @@ IReadOnlyDictionary<string, int> shapedRowCounts = await db.AutoSeedFromShapeAsy
 
 `AutoSeedAsync`, `AutoSeedCoverageAsync`, `AutoSeedFastAsync` and `AutoSeedFromShapeAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
 
-All five methods accept an optional trailing `CancellationToken`.
+All five methods accept an optional trailing `CancellationToken`. `AutoSeedAsync`, `AutoSeedFastAsync` and `AutoSeedFromShapeAsync` also accept an optional `AutoSeedOptions? options` before it (`AutoSeedExplainAsync` and `AutoSeedCoverageAsync` do not: coverage mode uses a wholly different, non-realistic value strategy that `AutoSeedOptions` does not apply to).
 
 ## What v1 actually generates
 
 Semantic inference rules match on property name suffix and CLR type: `FirstName`/`LastName`/`FullName`, `Email`/`EmailAddress`, `Cpf`/`Cnpj` (Brazilian documents, valid check digits), `PostalCode`/`Cep`/`ZipCode`/`Zip`, `Phone`/`Mobile`/`PhoneNumber`/`MobileNumber`, `Price`/`Amount`/`Balance` (decimal, respects precision/scale), `Quantity`/`Qty` (a small positive integer, not the generic fallback's much wider range), `Url`/`Uri`/`Link`, `Slug`, `IpAddress`/`IpV4Address`, `CreatedAt`/`UpdatedAt`/`DeletedAt` (kept in chronological order relative to each other, biased toward weekdays and business hours instead of spread uniformly across the whole window).
 
-A `Total`/`Subtotal`/`LineTotal`-suffixed decimal is computed as the product of a same-row `Price`-suffixed and `Quantity`-suffixed value when both exist, clamped to its own precision; otherwise it falls back to the same independent draw as `Price`/`Amount`/`Balance`.
+A `Total`/`Subtotal`/`LineTotal`-suffixed decimal is computed as the product of a same-row `Price`-suffixed and `Quantity`-suffixed value when both exist, clamped to its own precision; otherwise it falls back to the same independent draw as `Price`/`Amount`/`Balance`. An `AmountDue`/`AmountPayable`-suffixed decimal does the same, further reduced by a same-row `Discount`/`DiscountPercent`/`DiscountRate` fraction (0-30%) when present: `price * quantity * (1 - discountRate)`.
 
 A nullable, non-foreign-key property is left null on about 10% of rows instead of always getting a value, unless the claiming rule already controls its own nullability (a query-filter-governed property, say).
 
@@ -76,17 +85,28 @@ Child row counts follow a long-tail distribution (most parents have few children
 
 If an entity type declares a global query filter of a recognized simple shape (a single property: `e => !e.IsDeleted`, `e => e.IsActive`, `e => e.Flag == true`/`== false`, `e => e.DeletedAt == null`), that property is biased so about 90% of generated rows pass the filter, instead of a filtered-out row being just as likely as a visible one. Any other filter shape (compound, multi-property) is left alone and the property falls through to whatever other rule would otherwise claim it.
 
-`AutoSeedFastAsync()` generates and FK-resolves rows exactly like `AutoSeedAsync`, but writes them with `SqlBulkCopy` (SQL Server) or a binary `COPY` (PostgreSQL) instead of going through `SaveChanges`, assigning identity primary keys itself (sequential integers) so foreign keys can be wired before the insert. It rejects, by throwing `UnsupportedEntityTypeException`, any entity type that is part of an inheritance hierarchy, declares an owned type, needs a foreign-key-cycle second pass, or has a non-`int` identity primary key: tell the user to fall back to `AutoSeedAsync` for those. An equivalence test proves both methods produce identical stored data for the same seed on SQL Server and PostgreSQL.
+`AutoSeedFastAsync()` generates and FK-resolves rows exactly like `AutoSeedAsync`, but writes them with `SqlBulkCopy` (SQL Server) or a binary `COPY` (PostgreSQL) instead of going through `SaveChanges`, assigning identity primary keys itself (sequential for `int`/`long`, a seeded 16-byte value for `Guid`, matching what an auto-increment column or client-generated key would produce) so foreign keys can be wired before the insert. Owned types (including nested owned types) are supported: their columns are flattened onto the same row the owner writes. It rejects, by throwing `UnsupportedEntityTypeException`, any entity type that is part of an inheritance hierarchy, needs a foreign-key-cycle second pass, or has a single-column identity primary key of a type other than `int`, `long` or `Guid`: tell the user to fall back to `AutoSeedAsync` for those. An equivalence test proves both methods produce identical stored data for the same seed on SQL Server and PostgreSQL.
 
 `CaptureShapeAsync()` reads a row count for every seedable entity type straight from the database engine's own maintained statistics (`sys.dm_db_partition_stats` on SQL Server, `pg_class.reltuples` on PostgreSQL): it never issues a query against an actual row, only against catalog metadata. `ShapeCapture`/`TableShape` (namespace `EFCore.AutoSeed.Shape`) hold only a version number and a row count per table, nothing else, ever. `ShapeFile.WriteAsync`/`ReadAsync` (same namespace) save and load one as JSON. `AutoSeedFromShapeAsync()` only ships for fidelity mode; there is no fast-mode equivalent yet.
+
+## AutoSeedOptions
+
+```csharp
+public sealed record AutoSeedOptions(
+    double QueryFilterPassRate = 0.9,
+    double NullRate = 0.1,
+    TemporalClusteringOptions? TemporalClustering = null,
+    string Locale = "en",
+    DirtyDataKind DirtyData = DirtyDataKind.None);
+```
+
+Every property defaults to the exact behavior of not passing an `AutoSeedOptions` at all. `Locale` is a Bogus locale string (`"en"`, `"pt_BR"`, ...) used by name, postal code and phone inference; `Cpf`/`Cnpj` stay unconditionally Brazilian regardless of locale, since they are name-driven, not locale-driven. `DirtyData` (`None`, `Casing`, `Whitespace`, `Diacritics`, or `All`) applies noise only to free-text values with no fixed format to break (names, generic fallback text), never to an email address, URL, slug, document number or postal code.
 
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
 
-- An `AutoSeedOptions` overload, locale selection.
-- Making the null rate or the temporal/weekday clustering shape configurable by the caller; today they use a fixed, sensible default.
-- `AutoSeedFastAsync` support for inheritance, owned types, foreign-key cycles, and non-`int` identity keys.
+- `AutoSeedFastAsync` support for inheritance and foreign-key cycles.
 - Per-column statistics (null fraction, distinct count, histograms) in a captured shape; today it is row counts only.
 - `AutoSeedFromShapeAsync` for fast mode.
 
