@@ -14,7 +14,20 @@ namespace EFCore.AutoSeed.Inference.Rules;
 /// </summary>
 public sealed class QueryFilterInferenceRule : IPropertyInferenceRule
 {
-    private const double PassesFilterProbability = 0.9;
+    private const double DefaultPassesFilterProbability = 0.9;
+
+    private readonly double _passesFilterProbability;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="QueryFilterInferenceRule"/> class.
+    /// </summary>
+    /// <param name="passesFilterProbability">
+    /// The probability a generated value passes its entity type's query filter, in <c>[0, 1]</c>. Defaults to 0.9.
+    /// </param>
+    public QueryFilterInferenceRule(double passesFilterProbability = DefaultPassesFilterProbability)
+    {
+        _passesFilterProbability = passesFilterProbability;
+    }
 
     /// <inheritdoc />
     public int Priority => 0;
@@ -32,7 +45,7 @@ public sealed class QueryFilterInferenceRule : IPropertyInferenceRule
         FilteredPropertyValue filtered = FindFilteredValue(property)
             ?? throw new InvalidOperationException($"'{property.Name}' is not governed by a recognized query filter.");
 
-        bool passesFilter = random.NextDouble() < PassesFilterProbability;
+        bool passesFilter = random.NextDouble() < _passesFilterProbability;
         return passesFilter ? filtered.PassingValue : filtered.FailingValue;
     }
 

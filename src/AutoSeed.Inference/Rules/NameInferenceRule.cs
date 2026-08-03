@@ -26,6 +26,9 @@ public sealed class NameInferenceRule : IPropertyInferenceRule
     public int Priority => 0;
 
     /// <inheritdoc />
+    public bool AllowsDirtyData => true;
+
+    /// <inheritdoc />
     public bool CanInfer(IProperty property) =>
         property.ClrType == typeof(string) && PropertyNameMatch.EndsWithAny(property, "FirstName", "LastName", "FullName");
 

@@ -37,6 +37,7 @@ public static class DbContextAutoSeedExtensions
     /// <param name="context">The context to seed.</param>
     /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
     /// <param name="scale">The row count for entity types with no required principal.</param>
+    /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
@@ -51,9 +52,10 @@ public static class DbContextAutoSeedExtensions
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedAsync(
-        this DbContext context, long seed, int scale, CancellationToken cancellationToken = default)
+        this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+        options ??= AutoSeedOptions.Default;
 
         ModelReadResult read = new ModelReader().Read(context.Model);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
@@ -63,7 +65,7 @@ public static class DbContextAutoSeedExtensions
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
 
-        RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
 
         return await new Persistence()
             .InsertAsync(
@@ -86,6 +88,7 @@ public static class DbContextAutoSeedExtensions
     /// <param name="context">The context to seed.</param>
     /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
     /// <param name="scale">The row count for entity types with no required principal.</param>
+    /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
@@ -97,17 +100,18 @@ public static class DbContextAutoSeedExtensions
     /// <paramref name="context"/>'s configured EF Core provider is neither SQL Server nor PostgreSQL.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
-    /// The model needs a cycle-breaking second pass, declares an inherited or owned entity type, a
-    /// single-column identity primary key of a type fast mode does not assign itself, has no public
+    /// The model needs a cycle-breaking second pass, declares an inherited entity type, a
+    /// single-column identity primary key of a type other than int, long or Guid, has no public
     /// parameterless constructor, or a required principal has no generated rows.
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFastAsync(
-        this DbContext context, long seed, int scale, CancellationToken cancellationToken = default)
+        this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+        options ??= AutoSeedOptions.Default;
 
         ModelReadResult read = new ModelReader().Read(context.Model);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
@@ -117,7 +121,7 @@ public static class DbContextAutoSeedExtensions
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
 
-        RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
         IBulkInsertProvider provider = BulkInsertProviderFactory.Create(context);
 
         return await new BulkPersistence(provider)
@@ -251,6 +255,7 @@ public static class DbContextAutoSeedExtensions
     /// The row count for the largest entity type <paramref name="shape"/> captured a row count for,
     /// and for any entity type with no required principal that <paramref name="shape"/> did not capture.
     /// </param>
+    /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="shape"/> is <see langword="null"/>.</exception>
@@ -265,10 +270,11 @@ public static class DbContextAutoSeedExtensions
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFromShapeAsync(
-        this DbContext context, long seed, ShapeCapture shape, int scale, CancellationToken cancellationToken = default)
+        this DbContext context, long seed, ShapeCapture shape, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(shape);
+        options ??= AutoSeedOptions.Default;
         if (scale <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(scale), scale, "Must be positive.");
@@ -297,7 +303,7 @@ public static class DbContextAutoSeedExtensions
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, scaleByEntityType, scale, rootRandom.Derive("GenerationPlan"));
 
-        RowValueGenerator rowValueGenerator = new(BuildDefaultRules());
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
 
         return await new Persistence()
             .InsertAsync(
@@ -311,23 +317,25 @@ public static class DbContextAutoSeedExtensions
             .ConfigureAwait(false);
     }
 
-    private static IReadOnlyList<IPropertyInferenceRule> BuildDefaultRules() =>
+    private static IReadOnlyList<IPropertyInferenceRule> BuildDefaultRules(AutoSeedOptions options) =>
     [
-        new QueryFilterInferenceRule(),
-        new NameInferenceRule(),
+        new QueryFilterInferenceRule(options.QueryFilterPassRate),
+        new NameInferenceRule(options.Locale),
         new EmailInferenceRule(),
         new DocumentInferenceRule(),
-        new PostalCodeInferenceRule(),
-        new PhoneInferenceRule(),
+        new PostalCodeInferenceRule(options.Locale),
+        new PhoneInferenceRule(options.Locale),
         new DecimalAmountInferenceRule(),
         new QuantityInferenceRule(),
+        new DiscountInferenceRule(),
         new UrlInferenceRule(),
         new SlugInferenceRule(),
         new IpAddressInferenceRule(),
-        new CreatedAtInferenceRule(ReferenceNow),
-        new UpdatedAtInferenceRule(ReferenceNow),
+        new CreatedAtInferenceRule(ReferenceNow, temporalOptions: options.TemporalClustering),
+        new UpdatedAtInferenceRule(ReferenceNow, temporalOptions: options.TemporalClustering),
         new CorrelatedTotalInferenceRule(),
-        new DeletedAtInferenceRule(ReferenceNow),
+        new AmountDueInferenceRule(),
+        new DeletedAtInferenceRule(ReferenceNow, temporalOptions: options.TemporalClustering),
         new GenericTextInferenceRule(),
         new GenericNumberInferenceRule(),
         new GenericBooleanInferenceRule(),

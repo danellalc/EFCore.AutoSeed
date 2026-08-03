@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Distributions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -16,6 +17,7 @@ public sealed class DeletedAtInferenceRule : IPropertyInferenceRule
 
     private readonly DateTime _referenceNow;
     private readonly TimeSpan _lookback;
+    private readonly TemporalClusteringOptions _temporalOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DeletedAtInferenceRule"/> class.
@@ -29,10 +31,12 @@ public sealed class DeletedAtInferenceRule : IPropertyInferenceRule
     /// How far before <paramref name="referenceNow"/> generated dates can start when no
     /// <c>UpdatedAt</c> or <c>CreatedAt</c> sibling value is available. Defaults to two years.
     /// </param>
-    public DeletedAtInferenceRule(DateTime referenceNow, TimeSpan? lookback = null)
+    /// <param name="temporalOptions">The weekday/business-hour clustering shape. Defaults to <see cref="TemporalClusteringOptions.Default"/>.</param>
+    public DeletedAtInferenceRule(DateTime referenceNow, TimeSpan? lookback = null, TemporalClusteringOptions? temporalOptions = null)
     {
         _referenceNow = referenceNow;
         _lookback = lookback ?? TimeSpan.FromDays(730);
+        _temporalOptions = temporalOptions ?? TemporalClusteringOptions.Default;
     }
 
     /// <inheritdoc />
@@ -49,6 +53,6 @@ public sealed class DeletedAtInferenceRule : IPropertyInferenceRule
             ?? TemporalHelpers.FindSiblingDateTime(generatedValues, CreatedAtSuffixes)
             ?? _referenceNow - _lookback;
 
-        return TemporalHelpers.Between(random, lowerBound, _referenceNow);
+        return TemporalHelpers.Between(random, lowerBound, _referenceNow, _temporalOptions);
     }
 }

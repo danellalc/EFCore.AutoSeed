@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Distributions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -13,6 +14,7 @@ public sealed class UpdatedAtInferenceRule : IPropertyInferenceRule
 
     private readonly DateTime _referenceNow;
     private readonly TimeSpan _lookback;
+    private readonly TemporalClusteringOptions _temporalOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UpdatedAtInferenceRule"/> class.
@@ -26,10 +28,12 @@ public sealed class UpdatedAtInferenceRule : IPropertyInferenceRule
     /// How far before <paramref name="referenceNow"/> generated dates can start when no
     /// <c>CreatedAt</c> sibling value is available. Defaults to two years.
     /// </param>
-    public UpdatedAtInferenceRule(DateTime referenceNow, TimeSpan? lookback = null)
+    /// <param name="temporalOptions">The weekday/business-hour clustering shape. Defaults to <see cref="TemporalClusteringOptions.Default"/>.</param>
+    public UpdatedAtInferenceRule(DateTime referenceNow, TimeSpan? lookback = null, TemporalClusteringOptions? temporalOptions = null)
     {
         _referenceNow = referenceNow;
         _lookback = lookback ?? TimeSpan.FromDays(730);
+        _temporalOptions = temporalOptions ?? TemporalClusteringOptions.Default;
     }
 
     /// <inheritdoc />
@@ -43,6 +47,6 @@ public sealed class UpdatedAtInferenceRule : IPropertyInferenceRule
     public object? Infer(IProperty property, SeededRandom random, IReadOnlyDictionary<string, object> generatedValues)
     {
         DateTime lowerBound = TemporalHelpers.FindSiblingDateTime(generatedValues, CreatedAtSuffixes) ?? _referenceNow - _lookback;
-        return TemporalHelpers.Between(random, lowerBound, _referenceNow);
+        return TemporalHelpers.Between(random, lowerBound, _referenceNow, _temporalOptions);
     }
 }

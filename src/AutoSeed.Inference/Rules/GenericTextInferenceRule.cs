@@ -14,6 +14,9 @@ public sealed class GenericTextInferenceRule : IPropertyInferenceRule
     public int Priority => 100;
 
     /// <inheritdoc />
+    public bool AllowsDirtyData => true;
+
+    /// <inheritdoc />
     public bool CanInfer(IProperty property) =>
         property.ClrType == typeof(string) && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 

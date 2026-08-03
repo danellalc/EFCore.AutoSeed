@@ -71,6 +71,19 @@ public sealed class NorthwindSchemaTests
 
         Assert.Equal(firstResult, secondResult);
     }
+
+    [Fact]
+    public async Task AutoSeedAsync_CorrelatesOrderDetailAmountDueWithUnitPriceQuantityAndDiscount()
+    {
+        using NorthwindContext context = new(SchemaTestSupport.UniqueDatabaseName());
+
+        await context.AutoSeedAsync(seed: 42, scale: 200);
+
+        List<OrderDetail> details = await context.OrderDetails.ToListAsync();
+        Assert.NotEmpty(details);
+        Assert.All(details, detail =>
+            Assert.Equal(Math.Round(detail.UnitPrice * detail.Quantity * (1m - detail.Discount), 2), detail.AmountDue));
+    }
 }
 
 public sealed class NorthwindContext(string databaseName) : DbContext
@@ -93,6 +106,8 @@ public sealed class NorthwindContext(string databaseName) : DbContext
         modelBuilder.Entity<Product>().Property(product => product.UnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<OrderDetail>().HasKey(detail => new { detail.OrderId, detail.ProductId });
         modelBuilder.Entity<OrderDetail>().Property(detail => detail.UnitPrice).HasPrecision(18, 2);
+        modelBuilder.Entity<OrderDetail>().Property(detail => detail.Discount).HasPrecision(3, 2);
+        modelBuilder.Entity<OrderDetail>().Property(detail => detail.AmountDue).HasPrecision(18, 2);
 
         modelBuilder.Entity<Employee>()
             .HasOne(employee => employee.Manager)
@@ -194,4 +209,6 @@ public sealed class OrderDetail
     public Product Product { get; set; } = null!;
     public decimal UnitPrice { get; set; }
     public int Quantity { get; set; }
+    public decimal Discount { get; set; }
+    public decimal AmountDue { get; set; }
 }

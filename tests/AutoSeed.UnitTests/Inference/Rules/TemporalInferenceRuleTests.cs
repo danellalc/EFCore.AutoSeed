@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Distributions;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
 using EFCore.AutoSeed.UnitTests.Inference.Fixtures;
@@ -71,5 +72,28 @@ public sealed class TemporalInferenceRuleTests
         Assert.True(new CreatedAtInferenceRule(ReferenceNow).CanInfer(InferenceFixtureModel.GetProperty("CreatedAt")));
         Assert.True(new UpdatedAtInferenceRule(ReferenceNow).CanInfer(InferenceFixtureModel.GetProperty("UpdatedAt")));
         Assert.True(new DeletedAtInferenceRule(ReferenceNow).CanInfer(InferenceFixtureModel.GetProperty("DeletedAt")));
+    }
+
+    [Fact]
+    public void CreatedAt_WithACustomTemporalClusteringOptions_HonorsTheConfiguredWeekdayBias()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("CreatedAt");
+        TemporalClusteringOptions noWeekdayBias = new(WeekdayProbability: 0, BusinessHourProbability: 0);
+        CreatedAtInferenceRule rule = new(ReferenceNow, temporalOptions: noWeekdayBias);
+
+        int weekendCount = 0;
+        const int TotalSeeds = 300;
+        for (int seed = 0; seed < TotalSeeds; seed++)
+        {
+            DateTime createdAt = (DateTime)rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>())!;
+            if (createdAt.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            {
+                weekendCount++;
+            }
+        }
+
+        Assert.True(
+            weekendCount > TotalSeeds * 0.2,
+            $"expected close to the natural 2/7 weekend rate with weekday bias disabled, got {weekendCount} of {TotalSeeds}.");
     }
 }

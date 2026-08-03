@@ -5,8 +5,8 @@ namespace EFCore.AutoSeed.Inference.Rules;
 
 internal static class TemporalHelpers
 {
-    internal static DateTime Between(SeededRandom random, DateTime start, DateTime end) =>
-        TemporalClustering.Between(random, start, end);
+    internal static DateTime Between(SeededRandom random, DateTime start, DateTime end, TemporalClusteringOptions options) =>
+        TemporalClustering.Between(random, start, end, options);
 
     internal static DateTime? FindSiblingDateTime(IReadOnlyDictionary<string, object> generatedValues, params ReadOnlySpan<string> nameSuffixes)
     {

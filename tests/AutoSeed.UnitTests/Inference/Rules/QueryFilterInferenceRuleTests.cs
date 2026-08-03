@@ -89,6 +89,25 @@ public sealed class QueryFilterInferenceRuleTests
     }
 
     [Fact]
+    public void Infer_WithACustomPassRate_BiasesTowardTheConfiguredProbability()
+    {
+        IProperty property = GetProperty<ActiveOnlyContext, ActiveOnlyEntity>(nameof(ActiveOnlyEntity.IsActive));
+        QueryFilterInferenceRule rule = new(passesFilterProbability: 0.5);
+
+        int passing = 0;
+        const int TotalSeeds = 400;
+        for (int seed = 0; seed < TotalSeeds; seed++)
+        {
+            if (Equals(rule.Infer(property, SeededRandom.FromRootSeed(seed), new Dictionary<string, object>()), true))
+            {
+                passing++;
+            }
+        }
+
+        Assert.InRange(passing, TotalSeeds * 0.4, TotalSeeds * 0.6);
+    }
+
+    [Fact]
     public void CanInfer_IgnoresAnEntityTypeWithNoQueryFilter()
     {
         IProperty property = GetProperty<NoFilterContext, NoFilterEntity>(nameof(NoFilterEntity.IsDeleted));

@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Distributions;
 using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
@@ -107,9 +108,75 @@ public sealed class RowValueGeneratorTests
     }
 
     [Fact]
+    public void GenerateRow_WithDirtyDataAll_SometimesButNotAlwaysAltersAFreeTextValue()
+    {
+        RowValueGenerator dirty = CreateGenerator(dirtyData: DirtyDataKind.All);
+        RowValueGenerator clean = CreateGenerator();
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        int changed = 0;
+        const int TotalSeeds = 200;
+        for (int seed = 0; seed < TotalSeeds; seed++)
+        {
+            object dirtyFirstName = dirty.GenerateRow(entityType, SeededRandom.FromRootSeed(seed))["FirstName"];
+            object cleanFirstName = clean.GenerateRow(entityType, SeededRandom.FromRootSeed(seed))["FirstName"];
+
+            if (!Equals(dirtyFirstName, cleanFirstName))
+            {
+                changed++;
+            }
+        }
+
+        Assert.True(changed > 0, "expected at least one of 200 rows to have its FirstName altered by dirty data noise.");
+        Assert.True(changed < TotalSeeds, "expected most rows to keep their FirstName unchanged, dirty data noise is a minority.");
+    }
+
+    [Fact]
+    public void GenerateRow_NeverAppliesDirtyDataToAnEmailAddress()
+    {
+        RowValueGenerator dirty = new([new NameInferenceRule(), new EmailInferenceRule()], dirtyData: DirtyDataKind.All);
+        RowValueGenerator clean = new([new NameInferenceRule(), new EmailInferenceRule()]);
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        for (int seed = 0; seed < 50; seed++)
+        {
+            object dirtyEmail = dirty.GenerateRow(entityType, SeededRandom.FromRootSeed(seed))["Email"];
+            object cleanEmail = clean.GenerateRow(entityType, SeededRandom.FromRootSeed(seed))["Email"];
+
+            Assert.Equal(cleanEmail, dirtyEmail);
+        }
+    }
+
+    [Fact]
     public void Constructor_WithNullRules_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new RowValueGenerator(null!));
+    }
+
+    [Fact]
+    public void GenerateRow_WithNullRateZero_NeverLeavesAnEligibleNullablePropertyAbsent()
+    {
+        RowValueGenerator generator = CreateGenerator(nullRate: 0);
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        for (int seed = 0; seed < 100; seed++)
+        {
+            IReadOnlyDictionary<string, object> values = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(seed));
+            Assert.True(values.ContainsKey("DeletedAt"), $"seed {seed}: expected DeletedAt to be present with nullRate 0.");
+        }
+    }
+
+    [Fact]
+    public void GenerateRow_WithNullRateOne_AlwaysLeavesAnEligibleNullablePropertyAbsent()
+    {
+        RowValueGenerator generator = CreateGenerator(nullRate: 1);
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        for (int seed = 0; seed < 100; seed++)
+        {
+            IReadOnlyDictionary<string, object> values = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(seed));
+            Assert.False(values.ContainsKey("DeletedAt"), $"seed {seed}: expected DeletedAt to be absent with nullRate 1.");
+        }
     }
 
     [Fact]
@@ -151,7 +218,7 @@ public sealed class RowValueGeneratorTests
         public decimal Budget { get; set; }
     }
 
-    private static RowValueGenerator CreateGenerator() => new(
+    private static RowValueGenerator CreateGenerator(double nullRate = NullRateSampler.DefaultRate, DirtyDataKind dirtyData = DirtyDataKind.None) => new(
     [
         new NameInferenceRule(),
         new EmailInferenceRule(),
@@ -166,5 +233,5 @@ public sealed class RowValueGeneratorTests
         new CreatedAtInferenceRule(ReferenceNow),
         new UpdatedAtInferenceRule(ReferenceNow),
         new DeletedAtInferenceRule(ReferenceNow),
-    ]);
+    ], nullRate, dirtyData);
 }

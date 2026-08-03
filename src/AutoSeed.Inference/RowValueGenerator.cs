@@ -12,16 +12,31 @@ namespace EFCore.AutoSeed.Inference;
 public sealed class RowValueGenerator
 {
     private readonly IReadOnlyList<IPropertyInferenceRule> _rulesByPriority;
+    private readonly double _nullRate;
+    private readonly DirtyDataKind _dirtyData;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RowValueGenerator"/> class.
     /// </summary>
     /// <param name="rules">The rules to apply, in any order; they are sorted by <see cref="IPropertyInferenceRule.Priority"/> internally.</param>
+    /// <param name="nullRate">
+    /// The fraction of eligible nullable columns whose generated value is discarded, in <c>[0, 1]</c>.
+    /// Defaults to <see cref="NullRateSampler.DefaultRate"/>.
+    /// </param>
+    /// <param name="dirtyData">
+    /// The kinds of casing, whitespace and diacritic noise applied to free-text values after
+    /// generation, for properties whose claiming rule allows it (see
+    /// <see cref="IPropertyInferenceRule.AllowsDirtyData"/>). Defaults to
+    /// <see cref="DirtyDataKind.None"/>: no noise.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <see langword="null"/>.</exception>
-    public RowValueGenerator(IReadOnlyList<IPropertyInferenceRule> rules)
+    public RowValueGenerator(
+        IReadOnlyList<IPropertyInferenceRule> rules, double nullRate = NullRateSampler.DefaultRate, DirtyDataKind dirtyData = DirtyDataKind.None)
     {
         ArgumentNullException.ThrowIfNull(rules);
         _rulesByPriority = [.. rules.OrderBy(rule => rule.Priority)];
+        _nullRate = nullRate;
+        _dirtyData = dirtyData;
     }
 
     /// <summary>
@@ -54,6 +69,7 @@ public sealed class RowValueGenerator
         Dictionary<string, object> values = [];
         HashSet<string> claimedProperties = [];
         HashSet<string> nullRateExempt = [];
+        HashSet<string> dirtyDataEligible = [];
 
         foreach (IPropertyInferenceRule rule in _rulesByPriority)
         {
@@ -70,6 +86,11 @@ public sealed class RowValueGenerator
                     nullRateExempt.Add(property.Name);
                 }
 
+                if (rule.AllowsDirtyData)
+                {
+                    dirtyDataEligible.Add(property.Name);
+                }
+
                 SeededRandom propertyRandom = rowRandom.Derive(property.Name);
                 object? value = rule.Infer(property, propertyRandom, values);
                 if (value is not null)
@@ -80,11 +101,15 @@ public sealed class RowValueGenerator
         }
 
         ApplyNullRate(properties, values, nullRateExempt, rowRandom);
+        if (_dirtyData != DirtyDataKind.None)
+        {
+            ApplyDirtyData(properties, values, dirtyDataEligible, rowRandom);
+        }
 
         return values;
     }
 
-    private static void ApplyNullRate(
+    private void ApplyNullRate(
         IReadOnlyList<IProperty> properties, Dictionary<string, object> values, HashSet<string> exempt, SeededRandom rowRandom)
     {
         foreach (IProperty property in properties)
@@ -95,10 +120,27 @@ public sealed class RowValueGenerator
             }
 
             SeededRandom nullRateRandom = rowRandom.Derive(property.Name).Derive("NullRate");
-            if (NullRateSampler.ShouldLeaveNull(nullRateRandom))
+            if (NullRateSampler.ShouldLeaveNull(nullRateRandom, _nullRate))
             {
                 values.Remove(property.Name);
             }
+        }
+    }
+
+    private void ApplyDirtyData(
+        IReadOnlyList<IProperty> properties, Dictionary<string, object> values, HashSet<string> eligible, SeededRandom rowRandom)
+    {
+        foreach (IProperty property in properties)
+        {
+            if (!eligible.Contains(property.Name)
+                || !values.TryGetValue(property.Name, out object? value)
+                || value is not string stringValue)
+            {
+                continue;
+            }
+
+            SeededRandom dirtyRandom = rowRandom.Derive(property.Name).Derive("DirtyData");
+            values[property.Name] = DirtyDataTransform.Apply(stringValue, dirtyRandom, _dirtyData);
         }
     }
 }

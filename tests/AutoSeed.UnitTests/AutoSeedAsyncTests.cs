@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Inference;
 using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.AutoSeed.UnitTests;
@@ -61,6 +62,37 @@ public sealed class AutoSeedAsyncTests
         List<string> secondFirstNames = await second.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
 
         Assert.NotEqual(firstFirstNames, secondFirstNames);
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithACustomLocale_ProducesDifferentNamesThanTheDefaultLocale()
+    {
+        using CustomerOrderContext defaultLocale = NewContext();
+        using CustomerOrderContext customLocale = NewContext();
+
+        await defaultLocale.AutoSeedAsync(seed: 42, scale: 10);
+        await customLocale.AutoSeedAsync(seed: 42, scale: 10, options: new AutoSeedOptions(Locale: "pt_BR"));
+
+        List<string> defaultNames = await defaultLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
+        List<string> customNames = await customLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
+
+        Assert.NotEqual(defaultNames, customNames);
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithACustomLocale_IsStillDeterministicForTheSameSeed()
+    {
+        using CustomerOrderContext first = NewContext();
+        using CustomerOrderContext second = NewContext();
+        AutoSeedOptions options = new(Locale: "pt_BR");
+
+        await first.AutoSeedAsync(seed: 42, scale: 10, options: options);
+        await second.AutoSeedAsync(seed: 42, scale: 10, options: options);
+
+        List<string> firstNames = await first.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
+        List<string> secondNames = await second.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
+
+        Assert.Equal(firstNames, secondNames);
     }
 
     [Fact]

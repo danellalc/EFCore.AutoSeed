@@ -26,6 +26,15 @@ public interface IPropertyInferenceRule
     bool ControlsNullability => false;
 
     /// <summary>
+    /// Whether a string value this rule produces is safe to run through
+    /// <see cref="EFCore.AutoSeed.Distributions.DirtyDataTransform"/>: free text with no fixed
+    /// format, checksum or cross-property coherence to preserve. <see langword="false"/> for
+    /// anything with a validity constraint a casing, whitespace or diacritic change could break,
+    /// for example an email address, a URL, a slug, a document number or a postal code.
+    /// </summary>
+    bool AllowsDirtyData => false;
+
+    /// <summary>
     /// Determines whether this rule knows how to infer a value for <paramref name="property"/>.
     /// </summary>
     /// <param name="property">The property being generated.</param>
