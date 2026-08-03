@@ -32,11 +32,17 @@ Console.WriteLine(plan.ToReport());
 // relationship cardinality (zero/one/many) and every string length boundary. No seed
 // or scale: row counts are structural, not scaled. Usually under 50 rows.
 IReadOnlyDictionary<string, int> coverageRowCounts = await db.AutoSeedCoverageAsync();
+
+// Same generated data as AutoSeedAsync for the same seed, written through a
+// database-specific bulk insert (SqlBulkCopy / binary COPY) instead of SaveChanges.
+// Faster at scale; only supports entity types simple enough to make that safe (no
+// TPH/TPT/TPC inheritance, no owned types, no foreign-key cycles, int identity keys only).
+IReadOnlyDictionary<string, int> fastRowCounts = await db.AutoSeedFastAsync(seed: 42, scale: 1_000);
 ```
 
-`AutoSeedAsync` and `AutoSeedCoverageAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
+`AutoSeedAsync`, `AutoSeedCoverageAsync` and `AutoSeedFastAsync` return the number of rows inserted per entity type, keyed by the entity type's full CLR name (`typeof(Order).FullName`).
 
-All three methods accept an optional trailing `CancellationToken`.
+All four methods accept an optional trailing `CancellationToken`.
 
 ## What v1 actually generates
 
@@ -60,13 +66,16 @@ Child row counts follow a long-tail distribution (most parents have few children
 
 If an entity type declares a global query filter of a recognized simple shape (a single property: `e => !e.IsDeleted`, `e => e.IsActive`, `e => e.Flag == true`/`== false`, `e => e.DeletedAt == null`), that property is biased so about 90% of generated rows pass the filter, instead of a filtered-out row being just as likely as a visible one. Any other filter shape (compound, multi-property) is left alone and the property falls through to whatever other rule would otherwise claim it.
 
+`AutoSeedFastAsync()` generates and FK-resolves rows exactly like `AutoSeedAsync`, but writes them with `SqlBulkCopy` (SQL Server) or a binary `COPY` (PostgreSQL) instead of going through `SaveChanges`, assigning identity primary keys itself (sequential integers) so foreign keys can be wired before the insert. It rejects, by throwing `UnsupportedEntityTypeException`, any entity type that is part of an inheritance hierarchy, declares an owned type, needs a foreign-key-cycle second pass, or has a non-`int` identity primary key: tell the user to fall back to `AutoSeedAsync` for those. An equivalence test proves both methods produce identical stored data for the same seed on SQL Server and PostgreSQL.
+
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
 
-- An `AutoSeedOptions` overload, locale selection, a fast/bulk insertion mode.
+- An `AutoSeedOptions` overload, locale selection.
 - `autoseed seed`, `autoseed capture`, `autoseed apply` CLI commands. Only `autoseed explain` exists today.
 - Making the null rate or the temporal/weekday clustering shape configurable by the caller; today they use a fixed, sensible default.
+- `AutoSeedFastAsync` support for inheritance, owned types, foreign-key cycles, and non-`int` identity keys.
 
 ## CLI
 

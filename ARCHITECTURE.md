@@ -123,10 +123,12 @@ Value generation is one stage of seven. Keeping it isolated means the engine can
 
 `SaveChanges` with a million rows is not viable. Bulk copy is, but it bypasses EF, so value converters, shadow properties and key generation must be reimplemented by hand.
 
-- **Fidelity mode**: goes through EF. Always correct, slower. The default.
-- **Fast mode**: bulk copy. Opt-in.
+- **Fidelity mode** (`AutoSeedAsync`): goes through EF. Always correct, slower. The default.
+- **Fast mode** (`AutoSeedFastAsync`): `SqlBulkCopy` or binary `COPY`. Opt-in.
 
-An equivalence test asserts both modes produce identical data for the same seed. Fast mode does not ship without it.
+An equivalence test asserts both modes produce identical data for the same seed. Fast mode did not ship without it: it reuses the same model reading, cycle resolution, cardinality and value generation as fidelity mode, only swapping how rows reach the database.
+
+Bypassing EF means AutoSeed itself must assign identity primary keys (sequential integers, matching what an auto-increment column would produce against an empty table) so foreign keys can be wired before the insert happens. That, in turn, is why fast mode only supports entity types simple enough for this to be safe: a single-column `int` identity key, no inheritance, no owned types, no foreign-key cycles. Anything else throws a named exception pointing back at `AutoSeedAsync` rather than risk quietly writing wrong data.
 
 ### Why statistics-only capture
 
@@ -145,10 +147,10 @@ The cheap path is to wait for someone to open an issue asking. Adding a target l
 ## Roadmap
 
 **v1: the core** (shipped)
-Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
+Model reading, dependency graph, nullable cycle resolution, composite keys and FKs, owned types, TPH/TPT/TPC inheritance, semantic inference, global query filter bias for simple single-property filters, weekday/business-hour temporal clustering, a default null rate for nullable columns, `Total`/`Quantity` correlation, basic long tail, deterministic seed, SQL Server and PostgreSQL in fidelity and fast mode, `AutoSeedAsync`, `AutoSeedExplainAsync`, `AutoSeedFastAsync`, `autoseed explain` as a `dotnet tool`, `AutoSeedCoverageAsync`.
 
 **v2: depth**
-Bulk insert with equivalence test, an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable, compound filter shapes, more correlated-property pairs, published benchmarks.
+Fast mode support for inheritance, owned types, foreign-key cycles and non-`int` identity keys; an `AutoSeedOptions` overload making the query filter bias, null rate and temporal clustering caller-configurable; compound filter shapes; more correlated-property pairs; published benchmarks.
 
 **v3: control**
 Per-property rule overrides without losing inference for the rest. Named profiles ("small shop", "large marketplace", "stress base"). Seeding over existing data. Snapshot and restore for fast integration tests.
