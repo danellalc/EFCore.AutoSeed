@@ -13,6 +13,8 @@ namespace EFCore.AutoSeed.Pipeline;
 /// </summary>
 public sealed class Persistence
 {
+    private const string IdentityRandomScope = "__identity";
+
     private readonly UniquenessEnforcer _uniquenessEnforcer;
 
     /// <summary>
@@ -96,6 +98,7 @@ public sealed class Persistence
         }
 
         _uniquenessEnforcer.EnsureUnique(entityType, rows, entityRandom);
+        AssignGuidIdentityPrimaryKey(entityType, rows, entityRandom);
 
         int[]? driverRowIndices = entityPlan.ChildCountsByDriverRow is null
             ? null
@@ -116,6 +119,46 @@ public sealed class Persistence
 
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return instances;
+    }
+
+    /// <summary>
+    /// Fills in a single-column <see cref="Guid"/> primary key with <see cref="ValueGenerated.OnAdd"/>
+    /// before it reaches <see cref="DbContext.Add(object)"/>. No inference rule ever produces a
+    /// value for such a property, so left alone it would reach <see cref="DbContext.Add(object)"/>
+    /// still at its CLR default and EF Core's own non-seeded client-side generator would assign it,
+    /// breaking determinism. Uses the same <paramref name="entityRandom"/> derivation path and byte
+    /// generation as fast mode's identity assignment, so both modes produce the same key for the
+    /// same seed and row index. Composite keys and non-<see cref="Guid"/> identity primary keys
+    /// (<see cref="int"/>, <see cref="long"/>) are left untouched, the latter to the database's own
+    /// real IDENTITY column.
+    /// </summary>
+    private static void AssignGuidIdentityPrimaryKey(IEntityType entityType, List<Dictionary<string, object>> rows, SeededRandom entityRandom)
+    {
+        IKey? primaryKey = entityType.FindPrimaryKey();
+        if (primaryKey is not { Properties.Count: 1 }
+            || primaryKey.Properties[0].ValueGenerated != ValueGenerated.OnAdd
+            || primaryKey.Properties[0].ClrType != typeof(Guid))
+        {
+            return;
+        }
+
+        string keyPropertyName = primaryKey.Properties[0].Name;
+        for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+        {
+            SeededRandom identityRandom = entityRandom.Derive(rowIndex).Derive(IdentityRandomScope);
+            rows[rowIndex][keyPropertyName] = GenerateGuid(identityRandom);
+        }
+    }
+
+    private static Guid GenerateGuid(SeededRandom random)
+    {
+        byte[] bytes = new byte[16];
+        for (int index = 0; index < bytes.Length; index++)
+        {
+            bytes[index] = (byte)random.Next(0, 256);
+        }
+
+        return new Guid(bytes);
     }
 
     /// <summary>
