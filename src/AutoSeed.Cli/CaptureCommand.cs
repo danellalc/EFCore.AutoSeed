@@ -6,6 +6,11 @@ namespace EFCore.AutoSeed.Cli;
 
 internal static class CaptureCommand
 {
+    private static readonly HashSet<string> KnownFlagNames = new(StringComparer.Ordinal)
+    {
+        "context", "assembly", "output",
+    };
+
     private const string Usage =
         """
         Usage: autoseed capture --context <FullTypeName> --assembly <path-to-dll> --output <path-to-json>
@@ -36,7 +41,7 @@ internal static class CaptureCommand
         Dictionary<string, string> flags;
         try
         {
-            flags = CliFlags.Parse(args);
+            flags = CliFlags.Parse(args, KnownFlagNames);
         }
         catch (FormatException exception)
         {

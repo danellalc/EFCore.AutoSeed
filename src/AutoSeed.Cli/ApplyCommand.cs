@@ -9,6 +9,11 @@ internal static class ApplyCommand
     private const long DefaultSeed = 42;
     private const int DefaultScale = 1000;
 
+    private static readonly HashSet<string> KnownFlagNames = new(StringComparer.Ordinal)
+    {
+        "context", "assembly", "shape", "seed", "scale",
+    };
+
     private const string Usage =
         """
         Usage: autoseed apply --context <FullTypeName> --assembly <path-to-dll> --shape <path-to-json> [--seed <long>] [--scale <int>]
@@ -43,7 +48,7 @@ internal static class ApplyCommand
         Dictionary<string, string> flags;
         try
         {
-            flags = CliFlags.Parse(args);
+            flags = CliFlags.Parse(args, KnownFlagNames);
         }
         catch (FormatException exception)
         {

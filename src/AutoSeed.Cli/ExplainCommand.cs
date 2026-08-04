@@ -8,6 +8,11 @@ internal static class ExplainCommand
     private const long DefaultSeed = 42;
     private const int DefaultScale = 1000;
 
+    private static readonly HashSet<string> KnownFlagNames = new(StringComparer.Ordinal)
+    {
+        "context", "assembly", "seed", "scale",
+    };
+
     private const string Usage =
         """
         Usage: autoseed explain --context <FullTypeName> --assembly <path-to-dll> [--seed <long>] [--scale <int>]
@@ -37,7 +42,7 @@ internal static class ExplainCommand
         Dictionary<string, string> flags;
         try
         {
-            flags = CliFlags.Parse(args);
+            flags = CliFlags.Parse(args, KnownFlagNames);
         }
         catch (FormatException exception)
         {

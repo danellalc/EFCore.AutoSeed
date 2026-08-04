@@ -102,6 +102,37 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_ExplainWithATypoedSeedFlag_FailsWithUsageErrorRatherThanSilentlyIgnoringIt()
+    {
+        (int exitCode, string output, string error) = await RunCapturedAsync(
+            ["explain", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--seedd", "99"]);
+
+        Assert.Equal(CliExitCodes.UsageError, exitCode);
+        Assert.Contains("seedd", error);
+        Assert.DoesNotContain("rows", output);
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWithAnUnrecognizedFlag_FailsWithUsageError()
+    {
+        (int exitCode, _, string error) = await RunCapturedAsync(
+            ["capture", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--output", "out.json", "--bogusflag", "1"]);
+
+        Assert.Equal(CliExitCodes.UsageError, exitCode);
+        Assert.Contains("bogusflag", error);
+    }
+
+    [Fact]
+    public async Task RunAsync_ApplyWithAnUnrecognizedFlag_FailsWithUsageError()
+    {
+        (int exitCode, _, string error) = await RunCapturedAsync(
+            ["apply", "--context", ContextTypeName, "--assembly", TestAssemblyPath, "--shape", "shape.json", "--bogusflag", "1"]);
+
+        Assert.Equal(CliExitCodes.UsageError, exitCode);
+        Assert.Contains("bogusflag", error);
+    }
+
+    [Fact]
     public async Task RunAsync_CaptureWithoutOutput_FailsWithUsageError()
     {
         (int exitCode, _, string error) = await RunCapturedAsync(
