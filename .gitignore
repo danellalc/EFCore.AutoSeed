@@ -26,3 +26,5 @@ files.zip
 PLANO.md
 CLAUDE.md
 .claude/
+nuget-key.txt
+nupkgs/
