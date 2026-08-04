@@ -6,7 +6,8 @@ namespace EFCore.AutoSeed.Pipeline;
 /// <summary>
 /// Fixes up duplicate values for single-property unique keys and unique indexes across an
 /// already-generated batch of rows. A colliding value gets a deterministic numeric suffix drawn
-/// from <see cref="SeededRandom"/>; composite unique constraints are not handled yet.
+/// from <see cref="SeededRandom"/>, truncated as needed to respect the property's configured
+/// max length; composite unique constraints are not handled yet.
 /// </summary>
 public sealed class UniquenessEnforcer
 {
@@ -84,15 +85,38 @@ public sealed class UniquenessEnforcer
 
     private static string MakeUnique(IEntityType entityType, IProperty property, string value, HashSet<string> seenValues, SeededRandom attemptRandom)
     {
+        int? maxLength = property.GetMaxLength();
+
         for (int attempt = 0; attempt < MaxAttempts; attempt++)
         {
-            string candidate = $"{value}-{attemptRandom.Derive(attempt).Next(0, 1_000_000_000)}";
-            if (seenValues.Add(candidate))
+            string? candidate = BuildCandidate(value, maxLength, attemptRandom.Derive(attempt));
+            if (candidate is not null && seenValues.Add(candidate))
             {
                 return candidate;
             }
         }
 
         throw new UnsatisfiableUniquenessException(entityType.Name, property.Name);
+    }
+
+    private static string? BuildCandidate(string value, int? maxLength, SeededRandom suffixRandom)
+    {
+        if (maxLength is not > 0)
+        {
+            return $"{value}-{suffixRandom.Next(0, 1_000_000_000)}";
+        }
+
+        int maxSuffixDigits = Math.Min(maxLength.Value - 1, 9);
+        if (maxSuffixDigits < 1)
+        {
+            return null;
+        }
+
+        int upperExclusive = (int)Math.Pow(10, maxSuffixDigits);
+        string suffix = $"-{suffixRandom.Next(0, upperExclusive)}";
+
+        int availableForPrefix = maxLength.Value - suffix.Length;
+        string prefix = value.Length > availableForPrefix ? value[..availableForPrefix] : value;
+        return prefix + suffix;
     }
 }

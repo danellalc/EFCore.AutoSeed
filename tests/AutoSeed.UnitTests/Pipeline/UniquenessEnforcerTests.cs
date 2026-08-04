@@ -1,6 +1,7 @@
 using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using EFCore.AutoSeed.UnitTests.Pipeline.Fixtures;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.UnitTests.Pipeline;
@@ -93,6 +94,55 @@ public sealed class UniquenessEnforcerTests
     }
 
     [Fact]
+    public void EnsureUnique_RespectsMaxLength_WhileStillProducingDistinctValues()
+    {
+        IEntityType entityType = GetMaxLengthFiveEntityType();
+        List<Dictionary<string, object>> rows =
+        [
+            new() { ["Code"] = "abcde" },
+            new() { ["Code"] = "abcde" },
+            new() { ["Code"] = "abcde" },
+        ];
+
+        new UniquenessEnforcer().EnsureUnique(entityType, rows, SeededRandom.FromRootSeed(42));
+
+        List<string> codes = [.. rows.Select(row => (string)row["Code"])];
+        Assert.All(codes, code => Assert.True(code.Length <= 5));
+        Assert.Equal(3, codes.Distinct().Count());
+    }
+
+    [Fact]
+    public void EnsureUnique_WhenMaxLengthCannotFitAnySuffix_ThrowsUnsatisfiableUniquenessException()
+    {
+        IEntityType entityType = GetMaxLengthOneEntityType();
+        List<Dictionary<string, object>> rows =
+        [
+            new() { ["Code"] = "a" },
+            new() { ["Code"] = "a" },
+            new() { ["Code"] = "a" },
+        ];
+
+        Assert.Throws<UnsatisfiableUniquenessException>(
+            () => new UniquenessEnforcer().EnsureUnique(entityType, rows, SeededRandom.FromRootSeed(42)));
+    }
+
+    [Fact]
+    public void EnsureUnique_WithNoMaxLengthConfigured_DoesNotTruncateTheRewrittenValue()
+    {
+        IEntityType entityType = GetWidgetEntityType();
+        List<Dictionary<string, object>> rows =
+        [
+            new() { ["Code"] = "abc" },
+            new() { ["Code"] = "abc" },
+        ];
+
+        new UniquenessEnforcer().EnsureUnique(entityType, rows, SeededRandom.FromRootSeed(42));
+
+        string rewritten = (string)rows[1]["Code"];
+        Assert.Matches("^abc-[0-9]+$", rewritten);
+    }
+
+    [Fact]
     public void UnsatisfiableUniquenessException_NamesTheEntityAndProperty()
     {
         var exception = new UnsatisfiableUniquenessException("Widget", "Code");
@@ -108,4 +158,48 @@ public sealed class UniquenessEnforcerTests
         return context.Model.FindEntityType(typeof(Widget))
             ?? throw new InvalidOperationException("Widget entity type not found in the fixture model.");
     }
+
+    private static IEntityType GetMaxLengthFiveEntityType()
+    {
+        using MaxLengthFixtureContext context = new();
+        return context.Model.FindEntityType(typeof(MaxLengthFiveWidget))
+            ?? throw new InvalidOperationException("MaxLengthFiveWidget entity type not found in the fixture model.");
+    }
+
+    private static IEntityType GetMaxLengthOneEntityType()
+    {
+        using MaxLengthFixtureContext context = new();
+        return context.Model.FindEntityType(typeof(MaxLengthOneWidget))
+            ?? throw new InvalidOperationException("MaxLengthOneWidget entity type not found in the fixture model.");
+    }
+}
+
+public sealed class MaxLengthFixtureContext : DbContext
+{
+    public DbSet<MaxLengthFiveWidget> MaxLengthFiveWidgets => Set<MaxLengthFiveWidget>();
+    public DbSet<MaxLengthOneWidget> MaxLengthOneWidgets => Set<MaxLengthOneWidget>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MaxLengthFiveWidget>().HasIndex(widget => widget.Code).IsUnique();
+        modelBuilder.Entity<MaxLengthFiveWidget>().Property(widget => widget.Code).HasMaxLength(5);
+
+        modelBuilder.Entity<MaxLengthOneWidget>().HasIndex(widget => widget.Code).IsUnique();
+        modelBuilder.Entity<MaxLengthOneWidget>().Property(widget => widget.Code).HasMaxLength(1);
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(MaxLengthFixtureContext));
+}
+
+public sealed class MaxLengthFiveWidget
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+}
+
+public sealed class MaxLengthOneWidget
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
 }
