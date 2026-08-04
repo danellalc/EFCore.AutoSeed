@@ -44,6 +44,20 @@ public sealed class EmailInferenceRuleTests
     }
 
     [Fact]
+    public void Infer_WithDifferentLocales_ProducesDifferentValues()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("Email");
+        EmailInferenceRule englishRule = new("en");
+        EmailInferenceRule brazilianRule = new("pt_BR");
+        Dictionary<string, object> siblings = new() { ["FirstName"] = "Ana", ["LastName"] = "Silva" };
+
+        object englishResult = englishRule.Infer(property, SeededRandom.FromRootSeed(42), siblings)!;
+        object brazilianResult = brazilianRule.Infer(property, SeededRandom.FromRootSeed(42), siblings)!;
+
+        Assert.NotEqual(englishResult, brazilianResult);
+    }
+
+    [Fact]
     public void Infer_ProducesASyntacticallyPlausibleEmail()
     {
         IProperty property = InferenceFixtureModel.GetProperty("Email");

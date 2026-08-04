@@ -321,7 +321,7 @@ public static class DbContextAutoSeedExtensions
     [
         new QueryFilterInferenceRule(options.QueryFilterPassRate),
         new NameInferenceRule(options.Locale),
-        new EmailInferenceRule(),
+        new EmailInferenceRule(options.Locale),
         new DocumentInferenceRule(),
         new PostalCodeInferenceRule(options.Locale),
         new PhoneInferenceRule(options.Locale),

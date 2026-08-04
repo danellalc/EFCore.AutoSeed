@@ -75,8 +75,11 @@ public sealed class AutoSeedAsyncTests
 
         List<string> defaultNames = await defaultLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
         List<string> customNames = await customLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.FirstName).ToListAsync();
+        List<string> defaultEmails = await defaultLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.Email).ToListAsync();
+        List<string> customEmails = await customLocale.Customers.OrderBy(customer => customer.Id).Select(customer => customer.Email).ToListAsync();
 
         Assert.NotEqual(defaultNames, customNames);
+        Assert.NotEqual(defaultEmails, customEmails);
     }
 
     [Fact]
