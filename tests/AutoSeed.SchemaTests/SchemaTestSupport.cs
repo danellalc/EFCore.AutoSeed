@@ -15,7 +15,7 @@ internal static class SchemaTestSupport
         {
             foreach (IForeignKey foreignKey in entityType.GetForeignKeys())
             {
-                HashSet<string> principalKeys = [.. entriesByEntityType[foreignKey.PrincipalEntityType]
+                HashSet<string> principalKeys = [.. GetEntriesIncludingDerivedTypes(entriesByEntityType, foreignKey.PrincipalEntityType)
                     .Select(entry => FormatKey(entry, foreignKey.PrincipalKey.Properties))];
 
                 foreach (EntityEntry dependent in entriesByEntityType[entityType])
@@ -44,6 +44,10 @@ internal static class SchemaTestSupport
             }
         }
     }
+
+    private static IEnumerable<EntityEntry> GetEntriesIncludingDerivedTypes(
+        ILookup<IEntityType, EntityEntry> entriesByEntityType, IEntityType entityType) =>
+        entityType.GetDerivedTypesInclusive().SelectMany(type => entriesByEntityType[type]);
 
     private static string FormatKey(EntityEntry entry, IReadOnlyList<IProperty> properties) =>
         FormatKey([.. properties.Select(property => entry.Property(property.Name).CurrentValue)]);
