@@ -100,7 +100,14 @@ public sealed class GenerationPlan
 
         foreach (IEntityType entityType in order)
         {
-            GraphEdge? driverEdge = requiredEdgesByDependent[entityType]
+            IEnumerable<GraphEdge> requiredEdges = requiredEdgesByDependent[entityType];
+
+            GraphEdge? sharedPrimaryKeyEdge = requiredEdges
+                .Where(edge => SharedPrimaryKey.IsDependent(entityType, edge.ForeignKey))
+                .OrderBy(edge => edge.Principal.Name, StringComparer.Ordinal)
+                .FirstOrDefault();
+
+            GraphEdge? driverEdge = sharedPrimaryKeyEdge ?? requiredEdges
                 .OrderBy(edge => edge.Principal.Name, StringComparer.Ordinal)
                 .FirstOrDefault();
 
