@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -17,6 +18,11 @@ public sealed class ModelReader
     /// <param name="model">The finalized model of the <see cref="DbContext"/> to seed.</param>
     /// <returns>The seedable entity types, their dependencies, and what was excluded.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is <see langword="null"/>.</exception>
+    /// <exception cref="UnsupportedEntityTypeException">
+    /// An entity type has a required foreign key whose principal entity type was excluded from
+    /// seeding (for example an abstract type or one with no primary key), so the foreign key could
+    /// never be satisfied.
+    /// </exception>
     public ModelReadResult Read(IModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -61,6 +67,19 @@ public sealed class ModelReader
                 if (seedableSet.Contains(foreignKey.PrincipalEntityType))
                 {
                     edges.Add(new GraphEdge(foreignKey.PrincipalEntityType, entityType, foreignKey));
+                    continue;
+                }
+
+                if (foreignKey.IsRequired)
+                {
+                    string principalReason = skipped
+                        .FirstOrDefault(entry => entry.EntityTypeName == foreignKey.PrincipalEntityType.Name)
+                        ?.Reason ?? "owned type, cannot be seeded independently";
+                    string propertyNames = string.Join(", ", foreignKey.Properties.Select(property => property.Name));
+
+                    throw new UnsupportedEntityTypeException(
+                        entityType.Name,
+                        $"its required foreign key '{propertyNames}' references '{foreignKey.PrincipalEntityType.Name}', which cannot be seeded ({principalReason})");
                 }
             }
         }
