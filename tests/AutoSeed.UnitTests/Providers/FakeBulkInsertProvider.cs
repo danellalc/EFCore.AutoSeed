@@ -18,4 +18,14 @@ internal sealed class FakeBulkInsertProvider : EFCore.AutoSeed.Providers.IBulkIn
         _insertedByEntityTypeName[entityType.Name] = [.. rows];
         return Task.CompletedTask;
     }
+
+    public Task<long> GetMaxIdentityValueAsync(
+        DbContext context, IEntityType entityType, string keyColumnName, CancellationToken cancellationToken)
+    {
+        long max = _insertedByEntityTypeName.TryGetValue(entityType.Name, out List<IReadOnlyDictionary<string, object>>? rows) && rows.Count > 0
+            ? rows.Max(row => Convert.ToInt64(row[keyColumnName]))
+            : 0;
+
+        return Task.FromResult(max);
+    }
 }

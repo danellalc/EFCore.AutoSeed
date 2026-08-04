@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Npgsql;
@@ -41,11 +42,11 @@ public sealed class PostgreSqlShapeCaptureProvider : IShapeCaptureProvider
     private static string QualifiedTableName(IEntityType entityType)
     {
         string tableName = entityType.GetTableName()
-            ?? throw new InvalidOperationException($"'{entityType.Name}' has no mapped table.");
+            ?? throw new UnsupportedEntityTypeException(entityType.Name, "has no mapped table");
         string? schema = entityType.GetSchema();
 
         return schema is null ? Quote(tableName) : $"{Quote(schema)}.{Quote(tableName)}";
     }
 
-    private static string Quote(string identifier) => $"\"{identifier}\"";
+    private static string Quote(string identifier) => $"\"{identifier.Replace("\"", "\"\"")}\"";
 }

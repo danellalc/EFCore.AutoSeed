@@ -1,4 +1,5 @@
 using System.Data;
+using EFCore.AutoSeed.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -24,6 +25,9 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
             return;
         }
 
+        string destinationTableName = QualifiedTableName(entityType);
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
+
         SqlConnection connection = (SqlConnection)context.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open)
         {
@@ -31,12 +35,11 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
         }
 
         SqlTransaction? transaction = context.Database.CurrentTransaction?.GetDbTransaction() as SqlTransaction;
-        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
 
         using DataTable table = BuildDataTable(columns, rows);
         using SqlBulkCopy bulkCopy = new(connection, SqlBulkCopyOptions.KeepIdentity, transaction)
         {
-            DestinationTableName = QualifiedTableName(entityType),
+            DestinationTableName = destinationTableName,
         };
 
         foreach ((_, string columnName) in columns)
@@ -47,14 +50,39 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
         await bulkCopy.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task<long> GetMaxIdentityValueAsync(
+        DbContext context, IEntityType entityType, string keyColumnName, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(entityType);
+        ArgumentNullException.ThrowIfNull(keyColumnName);
+
+        string query = $"SELECT COALESCE(MAX({Bracket(keyColumnName)}), 0) FROM {QualifiedTableName(entityType)}";
+
+        SqlConnection connection = (SqlConnection)context.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        SqlTransaction? transaction = context.Database.CurrentTransaction?.GetDbTransaction() as SqlTransaction;
+
+        await using SqlCommand command = new(query, connection, transaction);
+        object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return result is null or DBNull ? 0 : Convert.ToInt64(result);
+    }
+
     private static string QualifiedTableName(IEntityType entityType)
     {
         string tableName = entityType.GetTableName()
-            ?? throw new InvalidOperationException($"'{entityType.Name}' has no mapped table.");
+            ?? throw new UnsupportedEntityTypeException(entityType.Name, "has no mapped table");
         string? schema = entityType.GetSchema();
 
-        return schema is null ? $"[{tableName}]" : $"[{schema}].[{tableName}]";
+        return schema is null ? Bracket(tableName) : $"{Bracket(schema)}.{Bracket(tableName)}";
     }
+
+    private static string Bracket(string identifier) => $"[{identifier.Replace("]", "]]")}]";
 
     private static DataTable BuildDataTable(
         IReadOnlyList<(IProperty Property, string ColumnName)> columns, IReadOnlyList<IReadOnlyDictionary<string, object>> rows)

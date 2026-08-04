@@ -1,4 +1,5 @@
 using System.Data;
+using EFCore.AutoSeed.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -47,9 +48,11 @@ public sealed class SqlServerShapeCaptureProvider : IShapeCaptureProvider
     private static string QualifiedTableName(IEntityType entityType)
     {
         string tableName = entityType.GetTableName()
-            ?? throw new InvalidOperationException($"'{entityType.Name}' has no mapped table.");
+            ?? throw new UnsupportedEntityTypeException(entityType.Name, "has no mapped table");
         string? schema = entityType.GetSchema();
 
-        return schema is null ? $"[{tableName}]" : $"[{schema}].[{tableName}]";
+        return schema is null ? Bracket(tableName) : $"{Bracket(schema)}.{Bracket(tableName)}";
     }
+
+    private static string Bracket(string identifier) => $"[{identifier.Replace("]", "]]")}]";
 }

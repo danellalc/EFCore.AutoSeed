@@ -28,4 +28,18 @@ public interface IBulkInsertProvider
         IEntityType entityType,
         IReadOnlyList<IReadOnlyDictionary<string, object>> rows,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads the current maximum value already stored in <paramref name="entityType"/>'s int or long
+    /// identity primary key column, so a bulk insert into a table that already has rows (for example
+    /// a second seeding run) can continue assigning values from there instead of restarting at 1 and
+    /// colliding with what is already in the table.
+    /// </summary>
+    /// <param name="context">The context whose underlying connection to read through.</param>
+    /// <param name="entityType">The entity type whose table to inspect.</param>
+    /// <param name="keyColumnName">The identity primary key column's name.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The column's current maximum value, or 0 if the table has no rows yet.</returns>
+    Task<long> GetMaxIdentityValueAsync(
+        DbContext context, IEntityType entityType, string keyColumnName, CancellationToken cancellationToken);
 }

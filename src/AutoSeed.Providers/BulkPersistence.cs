@@ -114,7 +114,7 @@ public sealed class BulkPersistence
         }
 
         _uniquenessEnforcer.EnsureUnique(entityType, rows, entityRandom);
-        AssignIdentityPrimaryKey(entityType, rows, entityRandom, nextIdentityValue);
+        await AssignIdentityPrimaryKeyAsync(context, entityType, rows, entityRandom, nextIdentityValue, cancellationToken).ConfigureAwait(false);
 
         int[]? driverRowIndices = entityPlan.ChildCountsByDriverRow is null
             ? null
@@ -231,8 +231,23 @@ public sealed class BulkPersistence
         }
     }
 
-    private static void AssignIdentityPrimaryKey(
-        IEntityType entityType, List<Dictionary<string, object>> rows, SeededRandom entityRandom, Dictionary<IEntityType, long> nextIdentityValue)
+    /// <summary>
+    /// Assigns a single-column identity primary key's value for every row of
+    /// <paramref name="entityType"/>. An <see cref="int"/> or <see cref="long"/> key continues from
+    /// whatever the destination table's own maximum value already is, queried once per entity type
+    /// per <see cref="InsertAsync"/> call and cached in <paramref name="nextIdentityValue"/>, so
+    /// seeding into a table that already has rows (a second seeding run, say) does not collide with
+    /// what is already there. A <see cref="Guid"/> key is derived deterministically from
+    /// <paramref name="entityRandom"/> instead, matching an empty-table identity column's continuity
+    /// concern not applying to a 128-bit random value.
+    /// </summary>
+    private async Task AssignIdentityPrimaryKeyAsync(
+        DbContext context,
+        IEntityType entityType,
+        List<Dictionary<string, object>> rows,
+        SeededRandom entityRandom,
+        Dictionary<IEntityType, long> nextIdentityValue,
+        CancellationToken cancellationToken)
     {
         IKey? primaryKey = entityType.FindPrimaryKey();
         if (primaryKey is not { Properties.Count: 1 } || primaryKey.Properties[0].ValueGenerated != ValueGenerated.OnAdd)
@@ -254,7 +269,13 @@ public sealed class BulkPersistence
             return;
         }
 
-        long next = nextIdentityValue.TryGetValue(entityType, out long value) ? value : 1;
+        if (!nextIdentityValue.TryGetValue(entityType, out long next))
+        {
+            long maxExisting = await _provider
+                .GetMaxIdentityValueAsync(context, entityType, keyProperty.GetColumnName(), cancellationToken)
+                .ConfigureAwait(false);
+            next = maxExisting + 1;
+        }
 
         foreach (Dictionary<string, object> row in rows)
         {
