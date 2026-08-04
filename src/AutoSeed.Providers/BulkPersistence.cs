@@ -200,7 +200,8 @@ public sealed class BulkPersistence
 
     private static IEnumerable<INavigation> GetOwnedReferenceNavigations(IEntityType entityType) =>
         entityType.GetNavigations()
-            .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership && navigation.ForeignKey.PrincipalEntityType == entityType);
+            .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership
+                && navigation.ForeignKey.PrincipalEntityType.GetDerivedTypesInclusive().Contains(entityType));
 
     /// <summary>
     /// Walks <paramref name="entityType"/>'s own properties, then, recursively, every owned

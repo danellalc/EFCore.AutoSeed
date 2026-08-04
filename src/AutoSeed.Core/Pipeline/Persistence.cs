@@ -334,7 +334,8 @@ public sealed class Persistence
 
     private static IEnumerable<INavigation> GetOwnedReferenceNavigations(IEntityType entityType) =>
         entityType.GetNavigations()
-            .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership && navigation.ForeignKey.PrincipalEntityType == entityType);
+            .Where(navigation => !navigation.IsCollection && navigation.ForeignKey.IsOwnership
+                && navigation.ForeignKey.PrincipalEntityType.GetDerivedTypesInclusive().Contains(entityType));
 
     private static object CreateInstance(IEntityType entityType)
     {

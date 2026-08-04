@@ -46,10 +46,28 @@ public sealed class OwnedTypeTests
         Assert.Equal(firstCities, secondCities);
     }
 
+    [Fact]
+    public async Task AutoSeedAsync_PopulatesAnOwnedTypeDeclaredOnATphBaseTypeForDerivedTypeRows()
+    {
+        using VehicleContext context = NewVehicleContext();
+
+        await context.AutoSeedAsync(seed: 42, scale: 10);
+
+        List<Car> cars = await context.Vehicles.OfType<Car>().ToListAsync();
+        Assert.NotEmpty(cars);
+        Assert.Contains(cars, car => car.Engine.HorsePower > 0);
+    }
+
     private static CustomerWithAddressContext NewContext()
     {
         int id = Interlocked.Increment(ref _databaseCounter);
         return new CustomerWithAddressContext($"{nameof(CustomerWithAddressContext)}_{id}");
+    }
+
+    private static VehicleContext NewVehicleContext()
+    {
+        int id = Interlocked.Increment(ref _databaseCounter);
+        return new VehicleContext($"{nameof(VehicleContext)}_{id}");
     }
 }
 
@@ -87,4 +105,33 @@ public sealed class Coordinates
 {
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+}
+
+public sealed class VehicleContext(string databaseName) : DbContext
+{
+    public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+    public DbSet<Car> Cars => Set<Car>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<Vehicle>().OwnsOne(vehicle => vehicle.Engine);
+}
+
+public class Vehicle
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public Engine Engine { get; set; } = null!;
+}
+
+public sealed class Car : Vehicle
+{
+    public int Doors { get; set; }
+}
+
+public sealed class Engine
+{
+    public int HorsePower { get; set; }
 }
