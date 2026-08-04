@@ -144,6 +144,6 @@ autoseed apply --context MyApp.AppDbContext --assembly <path-to-dll> --shape sha
 
 ## Documentation
 
-- README: https://github.com/danellalc/efcore-autoseed/blob/main/README.md
-- Architecture, design decisions and full roadmap: https://github.com/danellalc/efcore-autoseed/blob/main/ARCHITECTURE.md
-- Examples: https://github.com/danellalc/efcore-autoseed/tree/main/examples
+- README: https://github.com/danellalc/EFCore.AutoSeed/blob/main/README.md
+- Architecture, design decisions and full roadmap: https://github.com/danellalc/EFCore.AutoSeed/blob/main/ARCHITECTURE.md
+- Examples: https://github.com/danellalc/EFCore.AutoSeed/tree/main/examples

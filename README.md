@@ -4,7 +4,7 @@ Seed your database from your EF Core model. One line, full referential integrity
 
 [![NuGet](https://img.shields.io/nuget/v/EFCore.AutoSeed.svg)](https://www.nuget.org/packages/EFCore.AutoSeed)
 [![Downloads](https://img.shields.io/nuget/dt/EFCore.AutoSeed.svg)](https://www.nuget.org/packages/EFCore.AutoSeed)
-[![Build](https://img.shields.io/github/actions/workflow/status/danellalc/efcore-autoseed/ci.yml)](https://github.com/danellalc/efcore-autoseed/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/danellalc/EFCore.AutoSeed/ci.yml)](https://github.com/danellalc/EFCore.AutoSeed/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [GIF: empty database to 20.000 referentially valid rows in 8 seconds]

@@ -13,8 +13,8 @@
   <PropertyGroup>
     <Authors>danellalc</Authors>
     <Company>danellalc</Company>
-    <PackageProjectUrl>https://github.com/danellalc/efcore-autoseed</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/danellalc/efcore-autoseed</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/danellalc/EFCore.AutoSeed</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/danellalc/EFCore.AutoSeed</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
