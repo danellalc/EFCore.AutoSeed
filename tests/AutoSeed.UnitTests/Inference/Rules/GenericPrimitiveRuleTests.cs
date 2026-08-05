@@ -154,6 +154,13 @@ public sealed class GenericPrimitiveRuleTests
     }
 
     [Fact]
+    public void GenericDateTime_DoesNotClaimAConcurrencyToken()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("DatabaseComputedTimestamp");
+        Assert.False(new GenericDateTimeInferenceRule(ReferenceNow).CanInfer(property));
+    }
+
+    [Fact]
     public void GenericDateOnly_CanInferAndIsDeterministic()
     {
         IProperty property = InferenceFixtureModel.GetProperty("BirthDate");
@@ -169,6 +176,13 @@ public sealed class GenericPrimitiveRuleTests
     }
 
     [Fact]
+    public void GenericDateOnly_DoesNotClaimAConcurrencyToken()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("DatabaseComputedDate");
+        Assert.False(new GenericDateOnlyInferenceRule(ReferenceNow).CanInfer(property));
+    }
+
+    [Fact]
     public void GenericTimeOnly_CanInferAndIsDeterministic()
     {
         IProperty property = InferenceFixtureModel.GetProperty("PreferredContactTime");
@@ -180,6 +194,13 @@ public sealed class GenericPrimitiveRuleTests
 
         Assert.IsType<TimeOnly>(first);
         Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericTimeOnly_DoesNotClaimAConcurrencyToken()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("DatabaseComputedTime");
+        Assert.False(new GenericTimeOnlyInferenceRule().CanInfer(property));
     }
 
     [Fact]
@@ -198,6 +219,13 @@ public sealed class GenericPrimitiveRuleTests
     }
 
     [Fact]
+    public void GenericTimeSpan_DoesNotClaimAConcurrencyToken()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("DatabaseComputedDuration");
+        Assert.False(new GenericTimeSpanInferenceRule().CanInfer(property));
+    }
+
+    [Fact]
     public void GenericByteArray_CanInferAndIsDeterministic()
     {
         IProperty property = InferenceFixtureModel.GetProperty("Avatar");
@@ -210,6 +238,13 @@ public sealed class GenericPrimitiveRuleTests
         byte[] value = Assert.IsType<byte[]>(first);
         Assert.Equal(16, value.Length);
         Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericByteArray_DoesNotClaimAConcurrencyToken()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("ConcurrencyToken");
+        Assert.False(new GenericByteArrayInferenceRule().CanInfer(property));
     }
 
     [Fact]

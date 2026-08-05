@@ -18,6 +18,11 @@ public sealed class InferenceFixtureContext : DbContext
             entity.Property(person => person.HugeTotal).HasPrecision(38, 0);
             entity.Property(person => person.Url).HasMaxLength(15);
             entity.Property(person => person.AvatarThumbnail).HasMaxLength(4);
+            entity.Property(person => person.DatabaseComputedTimestamp).ValueGeneratedOnAddOrUpdate();
+            entity.Property(person => person.DatabaseComputedDate).ValueGeneratedOnAddOrUpdate();
+            entity.Property(person => person.DatabaseComputedTime).ValueGeneratedOnAddOrUpdate();
+            entity.Property(person => person.DatabaseComputedDuration).ValueGeneratedOnAddOrUpdate();
+            entity.Property(person => person.ConcurrencyToken).IsRowVersion();
         });
     }
 
@@ -56,6 +61,11 @@ public sealed class Person
     public TimeSpan SessionDuration { get; set; }
     public byte[] Avatar { get; set; } = [];
     public byte[] AvatarThumbnail { get; set; } = [];
+    public DateTime DatabaseComputedTimestamp { get; set; }
+    public DateOnly DatabaseComputedDate { get; set; }
+    public TimeOnly DatabaseComputedTime { get; set; }
+    public TimeSpan DatabaseComputedDuration { get; set; }
+    public byte[] ConcurrencyToken { get; set; } = [];
 }
 
 public enum PersonStatus

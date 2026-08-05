@@ -130,7 +130,7 @@ public sealed class GenerationPlanTests
     }
 
     [Fact]
-    public void Plan_WithScalePerRootEntityType_IgnoresANonPositiveOverrideAndFallsBackToTheDefault()
+    public void Plan_WithScalePerRootEntityType_HonorsAZeroOverrideInsteadOfFallingBackToTheDefault()
     {
         using UnrelatedEntitiesContext context = new();
         ModelReadResult read = new ModelReader().Read(context.Model);
@@ -142,7 +142,51 @@ public sealed class GenerationPlanTests
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(order, read.Edges, scaleByRootEntityType, defaultScale: 30, SeededRandom.FromRootSeed(1));
 
+        Assert.Equal(0, Single(plan, "Zebra").RowCount);
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_MissingEntryFallsBackToTheDefault()
+    {
+        using UnrelatedEntitiesContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(order, read.Edges, new Dictionary<IEntityType, int>(), defaultScale: 30, SeededRandom.FromRootSeed(1));
+
         Assert.Equal(30, Single(plan, "Zebra").RowCount);
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_AndARequiredDependentOnAZeroRowDriver_GivesTheDependentZeroRowsToo()
+    {
+        using LinearChainContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        IEntityType customer = order.Single(entityType => entityType.Name.EndsWith("Customer", StringComparison.Ordinal));
+
+        Dictionary<IEntityType, int> scaleByRootEntityType = new() { [customer] = 0 };
+
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
+            .Plan(order, read.Edges, scaleByRootEntityType, defaultScale: 30, SeededRandom.FromRootSeed(1));
+
+        Assert.Equal(0, Single(plan, "Customer").RowCount);
+        Assert.Equal(0, Single(plan, "Order").RowCount);
+    }
+
+    [Fact]
+    public void Plan_WithScalePerRootEntityType_AndANegativeOverride_ThrowsArgumentOutOfRangeException()
+    {
+        using UnrelatedEntitiesContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        IReadOnlyList<IEntityType> order = new CycleResolver().Resolve(read.EntityTypes, read.Edges).Order;
+        IEntityType zebra = order.Single(entityType => entityType.Name.EndsWith("Zebra", StringComparison.Ordinal));
+
+        Dictionary<IEntityType, int> scaleByRootEntityType = new() { [zebra] = -1 };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new GenerationPlan().Plan(order, read.Edges, scaleByRootEntityType, defaultScale: 30, SeededRandom.FromRootSeed(1)));
     }
 
     [Fact]

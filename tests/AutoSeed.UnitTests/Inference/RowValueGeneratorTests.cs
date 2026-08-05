@@ -155,6 +155,51 @@ public sealed class RowValueGeneratorTests
     }
 
     [Fact]
+    public void GenerateRow_NeverLetsACustomGeneratorObserveARuleInferredValue()
+    {
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+        IReadOnlyDictionary<string, object>? valuesSeenByCustomGenerator = null;
+
+        Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> customGenerators = new()
+        {
+            [(entityType, "Nickname")] = (random, values) =>
+            {
+                valuesSeenByCustomGenerator = new Dictionary<string, object>(values);
+                return "custom-nickname";
+            },
+        };
+
+        RowValueGenerator generator = new([new NameInferenceRule(), new EmailInferenceRule()], customGenerators: customGenerators);
+
+        IReadOnlyDictionary<string, object> row = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(42));
+
+        Assert.True(row.ContainsKey("Email"), "sanity check: a rule did generate a value for Email in the finished row.");
+        Assert.NotNull(valuesSeenByCustomGenerator);
+        Assert.False(
+            valuesSeenByCustomGenerator!.ContainsKey("Email"),
+            "every custom generator runs to completion before any rule, so Email cannot be visible yet, even though it sorts before Nickname alphabetically.");
+    }
+
+    [Fact]
+    public void GenerateRow_LetsACustomGeneratorObserveAnAlphabeticallyEarlierCustomGeneratedValue()
+    {
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> customGenerators = new()
+        {
+            [(entityType, "FirstName")] = (random, values) => "Ana",
+            [(entityType, "Nickname")] = (random, values) =>
+                values.TryGetValue("FirstName", out object? firstName) ? $"{firstName}-nick" : "no-first-name",
+        };
+
+        RowValueGenerator generator = new([], customGenerators: customGenerators);
+
+        IReadOnlyDictionary<string, object> row = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(1));
+
+        Assert.Equal("Ana-nick", row["Nickname"]);
+    }
+
+    [Fact]
     public void ValidateRequiredProperties_WithARequiredPropertyNoRuleRecognizes_ThrowsUnsupportedPropertyException()
     {
         using TphDiscriminatorContext context = new();
@@ -229,6 +274,52 @@ public sealed class RowValueGeneratorTests
         RowValueGenerator generator = CreateGenerator();
         Assert.Throws<ArgumentNullException>(() => generator.ValidateRequiredProperties(null!));
     }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithARequiredPropertyThatHasACustomGenerator_DoesNotThrow()
+    {
+        using TphDiscriminatorContext context = new();
+        IEntityType employeeEntityType = context.Model.FindEntityType(typeof(DiscriminatorEmployee))
+            ?? throw new InvalidOperationException("DiscriminatorEmployee entity type not found.");
+        RowValueGenerator generator = new([], customGenerators: NullCustomGenerator(employeeEntityType, "Name"));
+
+        Exception? exception = Record.Exception(() => generator.ValidateRequiredProperties([employeeEntityType]));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void GenerateRow_WithACustomGeneratorThatReturnsNullForARequiredProperty_ThrowsUnsupportedPropertyException()
+    {
+        using TphDiscriminatorContext context = new();
+        IEntityType employeeEntityType = context.Model.FindEntityType(typeof(DiscriminatorEmployee))
+            ?? throw new InvalidOperationException("DiscriminatorEmployee entity type not found.");
+        RowValueGenerator generator = new([], customGenerators: NullCustomGenerator(employeeEntityType, "Name"));
+
+        UnsupportedPropertyException exception = Assert.Throws<UnsupportedPropertyException>(
+            () => generator.GenerateRow(employeeEntityType, SeededRandom.FromRootSeed(1)));
+
+        Assert.Equal("Name", exception.PropertyName);
+        Assert.Contains("DiscriminatorEmployee", exception.EntityTypeName);
+    }
+
+    [Fact]
+    public void GenerateRow_WithACustomGeneratorThatReturnsNullForANullableProperty_LeavesItAbsent()
+    {
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+        RowValueGenerator generator = new([], customGenerators: NullCustomGenerator(entityType, nameof(Person.DeletedAt)));
+
+        IReadOnlyDictionary<string, object> values = generator.GenerateRow(entityType, SeededRandom.FromRootSeed(1));
+
+        Assert.False(values.ContainsKey("DeletedAt"));
+    }
+
+    private static IReadOnlyDictionary<(IEntityType EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> NullCustomGenerator(
+        IEntityType entityType, string propertyName) =>
+        new Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>>
+        {
+            [(entityType, propertyName)] = (_, _) => null,
+        };
 
     [Fact]
     public void GenerateRow_WithNullRateZero_NeverLeavesAnEligibleNullablePropertyAbsent()

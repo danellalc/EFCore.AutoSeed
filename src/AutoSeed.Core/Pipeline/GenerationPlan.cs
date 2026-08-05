@@ -57,14 +57,19 @@ public sealed class GenerationPlan
     /// </summary>
     /// <param name="order">Every entity type to plan for, topologically sorted so a principal always precedes its dependents.</param>
     /// <param name="edges">Every dependency between two of <paramref name="order"/>.</param>
-    /// <param name="scaleByRootEntityType">The row count for an entity type with no required principal, keyed by entity type.</param>
-    /// <param name="defaultScale">The row count for an entity type with no required principal that is absent from <paramref name="scaleByRootEntityType"/>, or whose value there is not positive.</param>
+    /// <param name="scaleByRootEntityType">
+    /// The row count for an entity type with no required principal, keyed by entity type. A value of
+    /// zero is honored as "generate no rows for this entity type", not treated as absent.
+    /// </param>
+    /// <param name="defaultScale">The row count for an entity type with no required principal that is absent from <paramref name="scaleByRootEntityType"/>.</param>
     /// <param name="random">The random source this plan's cardinality draws derive from.</param>
     /// <returns>One <see cref="EntityGenerationPlan"/> per entity type in <paramref name="order"/>, in the same order.</returns>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="order"/>, <paramref name="edges"/>, <paramref name="scaleByRootEntityType"/> or <paramref name="random"/> is <see langword="null"/>.
     /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="defaultScale"/> is not positive.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="defaultScale"/> is not positive, or <paramref name="scaleByRootEntityType"/> contains a negative value.
+    /// </exception>
     public IReadOnlyList<EntityGenerationPlan> Plan(
         IReadOnlyList<IEntityType> order,
         IReadOnlyList<GraphEdge> edges,
@@ -81,10 +86,18 @@ public sealed class GenerationPlan
             throw new ArgumentOutOfRangeException(nameof(defaultScale), defaultScale, "Must be positive.");
         }
 
+        foreach (int scale in scaleByRootEntityType.Values)
+        {
+            if (scale < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(scaleByRootEntityType), scale, "Every value must be non-negative.");
+            }
+        }
+
         return PlanCore(
             order,
             edges,
-            entityType => scaleByRootEntityType.TryGetValue(entityType, out int scale) && scale > 0 ? scale : defaultScale,
+            entityType => scaleByRootEntityType.TryGetValue(entityType, out int scale) ? scale : defaultScale,
             random);
     }
 

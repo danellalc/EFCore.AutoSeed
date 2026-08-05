@@ -1,4 +1,5 @@
 using EFCore.AutoSeed.Coverage;
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
@@ -45,7 +46,18 @@ public static class DbContextAutoSeedExtensions
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
-    /// <exception cref="ArgumentException"><paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s model.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="configure"/> configures both <c>Exclude()</c> and <c>HasRowCount()</c> for the same entity
+    /// type, or both <c>Exclude()</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
+    /// </exception>
+    /// <exception cref="Exceptions.InvalidSeedConfigurationException">
+    /// <paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s
+    /// model, or a custom generator for a property that is not mapped.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedSeedConfigurationException">
+    /// <paramref name="configure"/> excludes or pins the row count of an entity type that has a
+    /// required foreign key.
+    /// </exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
@@ -74,7 +86,7 @@ public static class DbContextAutoSeedExtensions
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
 
-        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, cancellationToken).ConfigureAwait(false);
+        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, read.Edges, cancellationToken).ConfigureAwait(false);
 
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
@@ -112,7 +124,18 @@ public static class DbContextAutoSeedExtensions
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
-    /// <exception cref="ArgumentException"><paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s model.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="configure"/> configures both <c>Exclude()</c> and <c>HasRowCount()</c> for the same entity
+    /// type, or both <c>Exclude()</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
+    /// </exception>
+    /// <exception cref="Exceptions.InvalidSeedConfigurationException">
+    /// <paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s
+    /// model, or a custom generator for a property that is not mapped.
+    /// </exception>
+    /// <exception cref="Exceptions.UnsupportedSeedConfigurationException">
+    /// <paramref name="configure"/> excludes or pins the row count of an entity type that has a
+    /// required foreign key.
+    /// </exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
@@ -146,7 +169,7 @@ public static class DbContextAutoSeedExtensions
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
 
-        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, cancellationToken).ConfigureAwait(false);
+        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, read.Edges, cancellationToken).ConfigureAwait(false);
 
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
@@ -385,7 +408,7 @@ public static class DbContextAutoSeedExtensions
     ];
 
     private static async Task<SeedConfiguration> ResolveConfigurationAsync(
-        DbContext context, Action<SeedConfigurationBuilder>? configure, CancellationToken cancellationToken)
+        DbContext context, Action<SeedConfigurationBuilder>? configure, IReadOnlyList<GraphEdge> edges, CancellationToken cancellationToken)
     {
         if (configure is null)
         {
@@ -398,16 +421,46 @@ public static class DbContextAutoSeedExtensions
         SeedConfigurationBuilder builder = new();
         configure(builder);
 
+        foreach (Type excludedEntityType in builder.ExcludedEntityReaders.Keys)
+        {
+            if (builder.RowCountOverrides.ContainsKey(excludedEntityType))
+            {
+                throw new ArgumentException(
+                    $"'{excludedEntityType.Name}' is configured with both Exclude() and HasRowCount(): Exclude() " +
+                    "reads its actual row count from the database, so a pinned row count can never apply. Remove one of the two calls.",
+                    "configure");
+            }
+        }
+
+        foreach ((Type customGeneratorEntityType, string propertyName) in builder.CustomGenerators.Keys)
+        {
+            if (builder.ExcludedEntityReaders.ContainsKey(customGeneratorEntityType))
+            {
+                throw new ArgumentException(
+                    $"'{customGeneratorEntityType.Name}' is configured with both Exclude() and GenerateWith() on '{propertyName}': " +
+                    "Exclude() reads its existing rows from the database instead of generating any, so the custom generator would " +
+                    "never run. Remove one of the two calls.",
+                    "configure");
+            }
+        }
+
+        ILookup<IEntityType, GraphEdge> requiredEdgesByDependent = edges
+            .Where(edge => edge.ForeignKey.IsRequired)
+            .ToLookup(edge => edge.Dependent);
+
         Dictionary<IEntityType, int> scaleOverrides = [];
         foreach (KeyValuePair<Type, int> entry in builder.RowCountOverrides)
         {
-            scaleOverrides[ResolveEntityType(context.Model, entry.Key)] = entry.Value;
+            IEntityType entityType = ResolveEntityType(context.Model, entry.Key);
+            EnsureConfigurableEntityType(entityType, requiredEdgesByDependent);
+            scaleOverrides[entityType] = entry.Value;
         }
 
         Dictionary<IEntityType, IReadOnlyList<object>> existingRows = [];
         foreach (KeyValuePair<Type, Func<DbContext, CancellationToken, Task<IReadOnlyList<object>>>> entry in builder.ExcludedEntityReaders)
         {
             IEntityType entityType = ResolveEntityType(context.Model, entry.Key);
+            EnsureConfigurableEntityType(entityType, requiredEdgesByDependent);
             IReadOnlyList<object> rows = await entry.Value(context, cancellationToken).ConfigureAwait(false);
             existingRows[entityType] = rows;
             scaleOverrides[entityType] = rows.Count;
@@ -420,8 +473,7 @@ public static class DbContextAutoSeedExtensions
             IEntityType entityType = ResolveEntityType(context.Model, entry.Key.EntityType);
             if (entityType.FindProperty(entry.Key.PropertyName) is null)
             {
-                throw new ArgumentException(
-                    $"'{entry.Key.PropertyName}' is not a property of '{entry.Key.EntityType.Name}' in this model.", "configure");
+                throw new InvalidSeedConfigurationException(entry.Key.EntityType.Name, entry.Key.PropertyName);
             }
 
             customGenerators[(entityType, entry.Key.PropertyName)] = entry.Value;
@@ -432,7 +484,16 @@ public static class DbContextAutoSeedExtensions
 
     private static IEntityType ResolveEntityType(IModel model, Type clrType) =>
         model.FindEntityType(clrType)
-            ?? throw new ArgumentException($"'{clrType.Name}' is not an entity type in this model.", "configure");
+            ?? throw new InvalidSeedConfigurationException(clrType.Name);
+
+    private static void EnsureConfigurableEntityType(IEntityType entityType, ILookup<IEntityType, GraphEdge> requiredEdgesByDependent)
+    {
+        GraphEdge? requiredEdge = requiredEdgesByDependent[entityType].FirstOrDefault();
+        if (requiredEdge is not null)
+        {
+            throw new UnsupportedSeedConfigurationException(entityType.Name, requiredEdge.Principal.Name);
+        }
+    }
 
     private sealed record SeedConfiguration(
         IReadOnlyDictionary<IEntityType, int> ScaleOverrides,

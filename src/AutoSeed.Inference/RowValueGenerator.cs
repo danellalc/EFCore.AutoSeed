@@ -54,7 +54,9 @@ public sealed class RowValueGenerator
     /// Generates a value for every property of <paramref name="entityType"/> that has a custom
     /// generator (see the constructor's <c>customGenerators</c> parameter, which always wins over
     /// every rule) or that at least one rule recognizes. A property neither covers is simply absent
-    /// from the result. The table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
+    /// from the result, unless it is required (non-nullable), in which case a custom generator
+    /// returning <see langword="null"/> for it throws instead of leaving it absent, see
+    /// <see cref="UnsupportedPropertyException"/> below. The table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
     /// the instance's actual CLR type during <c>SaveChanges</c>, and overwriting it with a
     /// generated value breaks every query that filters by it on a real relational database.
     /// After every rule has run, a nullable, non-foreign-key property that a rule claimed (and
@@ -69,6 +71,10 @@ public sealed class RowValueGenerator
     /// </param>
     /// <returns>The generated values, keyed by property name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entityType"/> or <paramref name="rowRandom"/> is <see langword="null"/>.</exception>
+    /// <exception cref="UnsupportedPropertyException">
+    /// A required (non-nullable), non-foreign-key property with <see cref="ValueGenerated.Never"/>
+    /// has a custom generator that returned <see langword="null"/> for this row.
+    /// </exception>
     public Dictionary<string, object> GenerateRow(IEntityType entityType, SeededRandom rowRandom)
     {
         ArgumentNullException.ThrowIfNull(entityType);
@@ -98,6 +104,10 @@ public sealed class RowValueGenerator
             if (value is not null)
             {
                 values[property.Name] = value;
+            }
+            else if (IsRequired(property))
+            {
+                throw new UnsupportedPropertyException(entityType.Name, property.Name, "its custom generator returned null for this row");
             }
         }
 
@@ -159,19 +169,23 @@ public sealed class RowValueGenerator
             foreach (IProperty property in entityType.GetProperties())
             {
                 if (property == discriminatorProperty
-                    || property.IsNullable
-                    || property.IsForeignKey()
-                    || property.ValueGenerated != ValueGenerated.Never
+                    || !IsRequired(property)
                     || _customGenerators.ContainsKey((entityType, property.Name))
                     || _rulesByPriority.Any(rule => rule.CanInfer(property)))
                 {
                     continue;
                 }
 
-                throw new UnsupportedPropertyException(entityType.Name, property.Name, property.ClrType.Name);
+                throw new UnsupportedPropertyException(
+                    entityType.Name,
+                    property.Name,
+                    $"no inference rule recognizes its type ({property.ClrType.Name}). Open an issue describing the property's shape");
             }
         }
     }
+
+    private static bool IsRequired(IProperty property) =>
+        !property.IsNullable && !property.IsForeignKey() && property.ValueGenerated == ValueGenerated.Never;
 
     private void ApplyNullRate(
         IReadOnlyList<IProperty> properties, Dictionary<string, object> values, HashSet<string> exempt, SeededRandom rowRandom)
