@@ -213,6 +213,7 @@ Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 
 - [Architecture and design decisions](ARCHITECTURE.md)
 - [Roadmap](ARCHITECTURE.md#roadmap)
+- [Changelog](CHANGELOG.md)
 - [For AI coding assistants](llms.txt)
 
 ## License
