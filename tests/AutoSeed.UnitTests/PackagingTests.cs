@@ -24,7 +24,7 @@ public sealed partial class PackagingTests
         XDocument csproj = XDocument.Load(Path.Combine(repoRoot, relativeCsprojPath));
         HashSet<string> packedFiles = csproj.Descendants("None")
             .Where(none => (string?)none.Attribute("Pack") == "true")
-            .Select(none => Path.GetFileName((string?)none.Attribute("Include") ?? ""))
+            .Select(none => ((string?)none.Attribute("Include") ?? "").Split(['\\', '/']).Last())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.All(referencedImages, image => Assert.Contains(image, packedFiles));
