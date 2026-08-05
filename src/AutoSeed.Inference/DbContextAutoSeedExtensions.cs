@@ -79,7 +79,7 @@ public static class DbContextAutoSeedExtensions
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
 
-        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData, configuration.CustomGenerators);
         rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(entityType => !configuration.ExistingRows.ContainsKey(entityType)));
 
         return await new Persistence()
@@ -151,7 +151,7 @@ public static class DbContextAutoSeedExtensions
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
 
-        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
+        RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData, configuration.CustomGenerators);
         rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(entityType => !configuration.ExistingRows.ContainsKey(entityType)));
         IBulkInsertProvider provider = BulkInsertProviderFactory.Create(context);
 
@@ -389,7 +389,10 @@ public static class DbContextAutoSeedExtensions
     {
         if (configure is null)
         {
-            return new SeedConfiguration(new Dictionary<IEntityType, int>(), new Dictionary<IEntityType, IReadOnlyList<object>>());
+            return new SeedConfiguration(
+                new Dictionary<IEntityType, int>(),
+                new Dictionary<IEntityType, IReadOnlyList<object>>(),
+                new Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>>());
         }
 
         SeedConfigurationBuilder builder = new();
@@ -410,7 +413,21 @@ public static class DbContextAutoSeedExtensions
             scaleOverrides[entityType] = rows.Count;
         }
 
-        return new SeedConfiguration(scaleOverrides, existingRows);
+        Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> customGenerators = [];
+        foreach (KeyValuePair<(Type EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> entry
+            in builder.CustomGenerators)
+        {
+            IEntityType entityType = ResolveEntityType(context.Model, entry.Key.EntityType);
+            if (entityType.FindProperty(entry.Key.PropertyName) is null)
+            {
+                throw new ArgumentException(
+                    $"'{entry.Key.PropertyName}' is not a property of '{entry.Key.EntityType.Name}' in this model.", "configure");
+            }
+
+            customGenerators[(entityType, entry.Key.PropertyName)] = entry.Value;
+        }
+
+        return new SeedConfiguration(scaleOverrides, existingRows, customGenerators);
     }
 
     private static IEntityType ResolveEntityType(IModel model, Type clrType) =>
@@ -418,5 +435,7 @@ public static class DbContextAutoSeedExtensions
             ?? throw new ArgumentException($"'{clrType.Name}' is not an entity type in this model.", "configure");
 
     private sealed record SeedConfiguration(
-        IReadOnlyDictionary<IEntityType, int> ScaleOverrides, IReadOnlyDictionary<IEntityType, IReadOnlyList<object>> ExistingRows);
+        IReadOnlyDictionary<IEntityType, int> ScaleOverrides,
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>> ExistingRows,
+        IReadOnlyDictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> CustomGenerators);
 }

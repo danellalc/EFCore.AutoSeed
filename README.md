@@ -81,6 +81,14 @@ await db.AutoSeedAsync(seed: 42, scale: 1_000, configure: seed =>
 
 `HasRowCount` pins an entity type's row count regardless of `scale`, for the opposite case: a table that should always have exactly this many rows.
 
+The same `configure` callback also takes over a single property, for the rare column no inference rule gets right: a PostGIS `geography` column, say, or a code that has to match a specific pattern:
+
+```csharp
+seed.Entity<Product>().Property(product => product.Sku).GenerateWith((random, values) => $"SKU-{random.Next(0, 100_000):D6}");
+```
+
+Runs before, and wins over, every built-in rule for that property. Takes the row's own seeded random source and the values already generated for its other properties, same as a built-in rule does.
+
 ### It explains itself before it writes anything
 
 ```csharp
@@ -191,13 +199,13 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, `autoseed explain`, and excluding an entity type or pinning its row count through an optional `configure` callback (`AutoSeedAsync`/`AutoSeedFastAsync` only, `AutoSeedExplainAsync`/`AutoSeedFromShapeAsync`/`AutoSeedCoverageAsync` not yet).
+Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, `autoseed explain`, and an optional `configure` callback that excludes an entity type, pins its row count, or replaces a single property's generator (`AutoSeedAsync`/`AutoSeedFastAsync` only, `AutoSeedExplainAsync`/`AutoSeedFromShapeAsync`/`AutoSeedCoverageAsync` not yet).
 
 Not shipped yet:
 
 - **Bulk insert coverage**: `AutoSeedFastAsync` still rejects TPH/TPT/TPC inheritance and foreign-key cycles, falling back to `AutoSeedAsync` for those.
 - **Per-column shape statistics**: a captured shape holds row counts only today; null fraction, distinct count and value histograms are not captured, so `AutoSeedFromShapeAsync` shapes relative table sizes, not value distributions. `AutoSeedFromShapeAsync` is also fidelity-mode only, no fast-mode equivalent yet.
-- **A custom per-property generator**: `configure` excludes an entity type or pins its row count, but there is no hook yet to override how a single property's value is generated.
+- **`configure` on every seeding method**: `AutoSeedAsync` and `AutoSeedFastAsync` only, for now.
 
 Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 

@@ -15,6 +15,7 @@ public sealed class RowValueGenerator
     private readonly IReadOnlyList<IPropertyInferenceRule> _rulesByPriority;
     private readonly double _nullRate;
     private readonly DirtyDataKind _dirtyData;
+    private readonly IReadOnlyDictionary<(IEntityType EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> _customGenerators;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RowValueGenerator"/> class.
@@ -30,20 +31,30 @@ public sealed class RowValueGenerator
     /// <see cref="IPropertyInferenceRule.AllowsDirtyData"/>). Defaults to
     /// <see cref="DirtyDataKind.None"/>: no noise.
     /// </param>
+    /// <param name="customGenerators">
+    /// A generator for a specific entity type's specific property, keyed by both. Takes priority
+    /// over every rule in <paramref name="rules"/> for that property, and is exempt from the null
+    /// rate and dirty-data noise. Defaults to none configured.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <see langword="null"/>.</exception>
     public RowValueGenerator(
-        IReadOnlyList<IPropertyInferenceRule> rules, double nullRate = NullRateSampler.DefaultRate, DirtyDataKind dirtyData = DirtyDataKind.None)
+        IReadOnlyList<IPropertyInferenceRule> rules,
+        double nullRate = NullRateSampler.DefaultRate,
+        DirtyDataKind dirtyData = DirtyDataKind.None,
+        IReadOnlyDictionary<(IEntityType EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>>? customGenerators = null)
     {
         ArgumentNullException.ThrowIfNull(rules);
         _rulesByPriority = [.. rules.OrderBy(rule => rule.Priority)];
         _nullRate = nullRate;
         _dirtyData = dirtyData;
+        _customGenerators = customGenerators ?? new Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>>();
     }
 
     /// <summary>
-    /// Generates a value for every property of <paramref name="entityType"/> that at least one
-    /// rule recognizes. Properties no rule recognizes are simply absent from the result. The
-    /// table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
+    /// Generates a value for every property of <paramref name="entityType"/> that has a custom
+    /// generator (see the constructor's <c>customGenerators</c> parameter, which always wins over
+    /// every rule) or that at least one rule recognizes. A property neither covers is simply absent
+    /// from the result. The table-per-hierarchy discriminator column, if any, is never touched: EF Core sets it from
     /// the instance's actual CLR type during <c>SaveChanges</c>, and overwriting it with a
     /// generated value breaks every query that filters by it on a real relational database.
     /// After every rule has run, a nullable, non-foreign-key property that a rule claimed (and
@@ -71,6 +82,24 @@ public sealed class RowValueGenerator
         HashSet<string> claimedProperties = [];
         HashSet<string> nullRateExempt = [];
         HashSet<string> dirtyDataEligible = [];
+
+        foreach (IProperty property in properties)
+        {
+            if (!_customGenerators.TryGetValue((entityType, property.Name), out Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>? generator))
+            {
+                continue;
+            }
+
+            claimedProperties.Add(property.Name);
+            nullRateExempt.Add(property.Name);
+
+            SeededRandom propertyRandom = rowRandom.Derive(property.Name);
+            object? value = generator(propertyRandom, values);
+            if (value is not null)
+            {
+                values[property.Name] = value;
+            }
+        }
 
         foreach (IPropertyInferenceRule rule in _rulesByPriority)
         {
@@ -113,10 +142,9 @@ public sealed class RowValueGenerator
     /// <summary>
     /// Checks that every required (non-nullable), non-foreign-key property of each entity type in
     /// <paramref name="entityTypes"/> that EF Core itself does not generate a value for
-    /// (<see cref="ValueGenerated.Never"/>) is recognized by at least one rule, so
-    /// <see cref="GenerateRow"/> never silently leaves it at its CLR default. Whether a rule
-    /// recognizes a property depends only on the entity type and the property itself, never on
-    /// generated data, so this can run once up front instead of after every row.
+    /// (<see cref="ValueGenerated.Never"/>) has a custom generator or is recognized by at least one
+    /// rule, so <see cref="GenerateRow"/> never silently leaves it at its CLR default. Neither
+    /// depends on generated data, so this can run once up front instead of after every row.
     /// </summary>
     /// <param name="entityTypes">The entity types about to be seeded.</param>
     /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> is <see langword="null"/>.</exception>
@@ -134,6 +162,7 @@ public sealed class RowValueGenerator
                     || property.IsNullable
                     || property.IsForeignKey()
                     || property.ValueGenerated != ValueGenerated.Never
+                    || _customGenerators.ContainsKey((entityType, property.Name))
                     || _rulesByPriority.Any(rule => rule.CanInfer(property)))
                 {
                     continue;

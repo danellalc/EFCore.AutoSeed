@@ -116,6 +116,8 @@ await db.AutoSeedAsync(seed: 42, scale: 1_000, configure: seed =>
 
 `Entity<TEntity>().Exclude()` skips generation for that entity type entirely and reads its already-existing rows from the database being seeded, using them as valid foreign key targets for any other entity type that requires one, exactly like freshly generated rows. If the excluded table has zero existing rows and something requires a row from it, that fails with `UnsupportedEntityTypeException` naming the excluded type, the same way an ordinary empty required principal would. `Entity<TEntity>().HasRowCount(n)` pins that entity type's row count to `n`, ignoring `scale`. Configuring a type that is not an entity type in the model throws `ArgumentException`.
 
+`Entity<TEntity>().Property(entity => entity.Sku).GenerateWith((random, generatedValues) => ...)` replaces every built-in rule for that one property with the supplied delegate, for a column no rule gets right (a PostGIS geography column via a custom converter, a code that must match a specific pattern). Runs before, and always wins over, every rule; exempt from the null rate and dirty-data noise. The delegate gets the row's own `SeededRandom` (derive further from it, never use an unseeded source) and the values already generated for the row's other properties, same contract as `IPropertyInferenceRule.Infer`. Returning `null` leaves the property absent for that row. Configuring a property that does not exist on the entity type (for example a `[NotMapped]` property, or an owned-type navigation, neither of which is an `IProperty`) throws `ArgumentException`. A required property with a custom generator is exempt from the "no rule recognizes it" check that would otherwise throw `UnsupportedPropertyException`.
+
 ## Not built yet
 
 These are on the roadmap, not in the package. Do not tell a user to call them:
@@ -123,8 +125,7 @@ These are on the roadmap, not in the package. Do not tell a user to call them:
 - `AutoSeedFastAsync` support for inheritance and foreign-key cycles.
 - Per-column statistics (null fraction, distinct count, histograms) in a captured shape; today it is row counts only.
 - `AutoSeedFromShapeAsync` for fast mode.
-- `configure` (`Exclude`/`HasRowCount`) on `AutoSeedExplainAsync`, `AutoSeedFromShapeAsync` or `AutoSeedCoverageAsync`.
-- A hook to override how a single property's value is generated.
+- `configure` (`Exclude`/`HasRowCount`/`Property().GenerateWith`) on `AutoSeedExplainAsync`, `AutoSeedFromShapeAsync` or `AutoSeedCoverageAsync`.
 
 ## CLI
 
