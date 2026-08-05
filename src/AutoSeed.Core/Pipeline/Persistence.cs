@@ -39,8 +39,13 @@ public sealed class Persistence
     /// <param name="generateRow">Produces the property values for one row of one entity type.</param>
     /// <param name="rootRandom">The random source every row and every uniqueness fix-up derives from.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="existingRowsByEntityType">
+    /// Already-existing rows for an entity type excluded from generation, used as valid foreign key
+    /// targets in place of freshly generated ones. An entity type present here is never generated or
+    /// inserted, regardless of its row count in <paramref name="plan"/>. Defaults to none excluded.
+    /// </param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
-    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     /// <exception cref="UnsupportedEntityTypeException">
     /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
     /// </exception>
@@ -51,7 +56,8 @@ public sealed class Persistence
         IReadOnlyList<GraphEdge> deferredEdges,
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(plan);
@@ -65,8 +71,10 @@ public sealed class Persistence
 
         foreach (EntityGenerationPlan entityPlan in plan)
         {
-            List<object> instances = await InsertEntityTypeAsync(
-                context, entityPlan, requiredEdges, insertedByEntityType, generateRow, rootRandom, cancellationToken).ConfigureAwait(false);
+            List<object> instances = existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true
+                ? [.. existingRows]
+                : await InsertEntityTypeAsync(
+                    context, entityPlan, requiredEdges, insertedByEntityType, generateRow, rootRandom, cancellationToken).ConfigureAwait(false);
             insertedByEntityType[entityPlan.EntityType] = instances;
         }
 

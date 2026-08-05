@@ -67,6 +67,20 @@ Weekday/business-hour clustering, null rate, the query filter bias and locale ar
 await db.AutoSeedAsync(seed: 42, scale: 1_000, options: new AutoSeedOptions(NullRate: 0.2, Locale: "pt_BR"));
 ```
 
+### It steps out of the way for a table you already own
+
+A lookup table (`Status`, `Category`) does not need `scale` rows: it needs the handful of values your app actually checks against, seeded once by a migration or by hand. Exclude it, and AutoSeed reads its existing rows and uses them as valid foreign key targets for everything else, instead of trying to insert more:
+
+```csharp
+await db.AutoSeedAsync(seed: 42, scale: 1_000, configure: seed =>
+{
+    seed.Entity<Status>().Exclude();
+    seed.Entity<Category>().HasRowCount(10);
+});
+```
+
+`HasRowCount` pins an entity type's row count regardless of `scale`, for the opposite case: a table that should always have exactly this many rows.
+
 ### It explains itself before it writes anything
 
 ```csharp
@@ -177,12 +191,13 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, and `autoseed explain`.
+Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, `autoseed explain`, and excluding an entity type or pinning its row count through an optional `configure` callback (`AutoSeedAsync`/`AutoSeedFastAsync` only, `AutoSeedExplainAsync`/`AutoSeedFromShapeAsync`/`AutoSeedCoverageAsync` not yet).
 
 Not shipped yet:
 
 - **Bulk insert coverage**: `AutoSeedFastAsync` still rejects TPH/TPT/TPC inheritance and foreign-key cycles, falling back to `AutoSeedAsync` for those.
 - **Per-column shape statistics**: a captured shape holds row counts only today; null fraction, distinct count and value histograms are not captured, so `AutoSeedFromShapeAsync` shapes relative table sizes, not value distributions. `AutoSeedFromShapeAsync` is also fidelity-mode only, no fast-mode equivalent yet.
+- **A custom per-property generator**: `configure` excludes an entity type or pins its row count, but there is no hook yet to override how a single property's value is generated.
 
 Details and rationale in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 

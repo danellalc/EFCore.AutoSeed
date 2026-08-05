@@ -38,10 +38,14 @@ public static class DbContextAutoSeedExtensions
     /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
     /// <param name="scale">The row count for entity types with no required principal.</param>
     /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
+    /// <param name="configure">
+    /// Excludes an entity type or pins its row count. The common case needs none of this.
+    /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
+    /// <exception cref="ArgumentException"><paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s model.</exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
@@ -55,7 +59,12 @@ public static class DbContextAutoSeedExtensions
     /// A required property has no database-generated value and no rule recognizes it.
     /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedAsync(
-        this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
+        this DbContext context,
+        long seed,
+        int scale,
+        AutoSeedOptions? options = null,
+        Action<SeedConfigurationBuilder>? configure = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         options ??= AutoSeedOptions.Default;
@@ -65,11 +74,13 @@ public static class DbContextAutoSeedExtensions
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
 
+        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, cancellationToken).ConfigureAwait(false);
+
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
-            .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
+            .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
-        rowValueGenerator.ValidateRequiredProperties(resolution.Order);
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(entityType => !configuration.ExistingRows.ContainsKey(entityType)));
 
         return await new Persistence()
             .InsertAsync(
@@ -79,7 +90,8 @@ public static class DbContextAutoSeedExtensions
                 resolution.DeferredEdges,
                 (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
                 rootRandom.Derive("Persistence"),
-                cancellationToken)
+                cancellationToken,
+                configuration.ExistingRows)
             .ConfigureAwait(false);
     }
 
@@ -93,10 +105,14 @@ public static class DbContextAutoSeedExtensions
     /// <param name="seed">The seed every generated value derives from. The same seed always produces the same data.</param>
     /// <param name="scale">The row count for entity types with no required principal.</param>
     /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
+    /// <param name="configure">
+    /// Excludes an entity type or pins its row count. The common case needs none of this.
+    /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
+    /// <exception cref="ArgumentException"><paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s model.</exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
@@ -115,7 +131,12 @@ public static class DbContextAutoSeedExtensions
     /// A required property has no database-generated value and no rule recognizes it.
     /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFastAsync(
-        this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
+        this DbContext context,
+        long seed,
+        int scale,
+        AutoSeedOptions? options = null,
+        Action<SeedConfigurationBuilder>? configure = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         options ??= AutoSeedOptions.Default;
@@ -125,11 +146,13 @@ public static class DbContextAutoSeedExtensions
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
 
+        SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, cancellationToken).ConfigureAwait(false);
+
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
-            .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
+            .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
-        rowValueGenerator.ValidateRequiredProperties(resolution.Order);
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(entityType => !configuration.ExistingRows.ContainsKey(entityType)));
         IBulkInsertProvider provider = BulkInsertProviderFactory.Create(context);
 
         return await new BulkPersistence(provider)
@@ -140,7 +163,8 @@ public static class DbContextAutoSeedExtensions
                 resolution.DeferredEdges,
                 (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
                 rootRandom.Derive("Persistence"),
-                cancellationToken)
+                cancellationToken,
+                configuration.ExistingRows)
             .ConfigureAwait(false);
     }
 
@@ -359,4 +383,40 @@ public static class DbContextAutoSeedExtensions
         new GenericTimeSpanInferenceRule(),
         new GenericByteArrayInferenceRule(),
     ];
+
+    private static async Task<SeedConfiguration> ResolveConfigurationAsync(
+        DbContext context, Action<SeedConfigurationBuilder>? configure, CancellationToken cancellationToken)
+    {
+        if (configure is null)
+        {
+            return new SeedConfiguration(new Dictionary<IEntityType, int>(), new Dictionary<IEntityType, IReadOnlyList<object>>());
+        }
+
+        SeedConfigurationBuilder builder = new();
+        configure(builder);
+
+        Dictionary<IEntityType, int> scaleOverrides = [];
+        foreach (KeyValuePair<Type, int> entry in builder.RowCountOverrides)
+        {
+            scaleOverrides[ResolveEntityType(context.Model, entry.Key)] = entry.Value;
+        }
+
+        Dictionary<IEntityType, IReadOnlyList<object>> existingRows = [];
+        foreach (KeyValuePair<Type, Func<DbContext, CancellationToken, Task<IReadOnlyList<object>>>> entry in builder.ExcludedEntityReaders)
+        {
+            IEntityType entityType = ResolveEntityType(context.Model, entry.Key);
+            IReadOnlyList<object> rows = await entry.Value(context, cancellationToken).ConfigureAwait(false);
+            existingRows[entityType] = rows;
+            scaleOverrides[entityType] = rows.Count;
+        }
+
+        return new SeedConfiguration(scaleOverrides, existingRows);
+    }
+
+    private static IEntityType ResolveEntityType(IModel model, Type clrType) =>
+        model.FindEntityType(clrType)
+            ?? throw new ArgumentException($"'{clrType.Name}' is not an entity type in this model.", "configure");
+
+    private sealed record SeedConfiguration(
+        IReadOnlyDictionary<IEntityType, int> ScaleOverrides, IReadOnlyDictionary<IEntityType, IReadOnlyList<object>> ExistingRows);
 }

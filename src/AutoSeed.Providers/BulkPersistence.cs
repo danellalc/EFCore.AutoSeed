@@ -1,6 +1,7 @@
 using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.Providers;
@@ -45,8 +46,13 @@ public sealed class BulkPersistence
     /// <param name="generateRow">Produces the property values for one row of one entity type.</param>
     /// <param name="rootRandom">The random source every row and every uniqueness fix-up derives from.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="existingRowsByEntityType">
+    /// Already-existing rows for an entity type excluded from generation, used as valid foreign key
+    /// targets in place of freshly generated ones. An entity type present here is never generated or
+    /// inserted, regardless of its row count in <paramref name="plan"/>. Defaults to none excluded.
+    /// </param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
-    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     /// <exception cref="UnsupportedEntityTypeException">
     /// The model needs a cycle-breaking second pass, declares an inherited entity type, or a
     /// single-column identity primary key of a type other than <see cref="int"/>, <see cref="long"/> or <see cref="Guid"/>.
@@ -58,7 +64,8 @@ public sealed class BulkPersistence
         IReadOnlyList<GraphEdge> deferredEdges,
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(plan);
@@ -85,13 +92,31 @@ public sealed class BulkPersistence
 
         foreach (EntityGenerationPlan entityPlan in plan)
         {
-            List<Dictionary<string, object>> rows = await InsertEntityTypeAsync(
+            List<Dictionary<string, object>> rows = existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true
+                ? [.. existingRows.Select(instance => ToPropertyDictionary(context, entityPlan.EntityType, instance))]
+                : await InsertEntityTypeAsync(
                     context, entityPlan, requiredEdges, rowsByEntityType, nextIdentityValue, generateRow, rootRandom, cancellationToken)
-                .ConfigureAwait(false);
+                    .ConfigureAwait(false);
             rowsByEntityType[entityPlan.EntityType] = rows;
         }
 
         return plan.ToDictionary(entry => entry.EntityType.Name, entry => entry.RowCount);
+    }
+
+    private static Dictionary<string, object> ToPropertyDictionary(DbContext context, IEntityType entityType, object instance)
+    {
+        Dictionary<string, object> row = [];
+        EntityEntry entry = context.Entry(instance);
+        foreach (IProperty property in entityType.GetProperties())
+        {
+            object? value = entry.Property(property.Name).CurrentValue;
+            if (value is not null)
+            {
+                row[property.Name] = value;
+            }
+        }
+
+        return row;
     }
 
     private async Task<List<Dictionary<string, object>>> InsertEntityTypeAsync(
