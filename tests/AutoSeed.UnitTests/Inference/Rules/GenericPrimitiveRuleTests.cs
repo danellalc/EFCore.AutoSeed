@@ -125,4 +125,101 @@ public sealed class GenericPrimitiveRuleTests
 
         Assert.NotEqual(first, second);
     }
+
+    private static readonly DateTime ReferenceNow = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void GenericDateTime_CanInferAndIsDeterministic()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("ExpiresAt");
+        GenericDateTimeInferenceRule rule = new(ReferenceNow);
+
+        Assert.True(rule.CanInfer(property));
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        DateTime value = Assert.IsType<DateTime>(first);
+        Assert.True(value <= ReferenceNow);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericDateTime_DoesNotClaimAPropertyANameSpecificRuleAlreadyOwns()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("CreatedAt");
+        GenericDateTimeInferenceRule rule = new(ReferenceNow);
+
+        Assert.True(rule.CanInfer(property));
+        Assert.True(new CreatedAtInferenceRule(ReferenceNow).CanInfer(property));
+    }
+
+    [Fact]
+    public void GenericDateOnly_CanInferAndIsDeterministic()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("BirthDate");
+        GenericDateOnlyInferenceRule rule = new(ReferenceNow);
+
+        Assert.True(rule.CanInfer(property));
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        DateOnly value = Assert.IsType<DateOnly>(first);
+        Assert.True(value <= DateOnly.FromDateTime(ReferenceNow));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericTimeOnly_CanInferAndIsDeterministic()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("PreferredContactTime");
+        GenericTimeOnlyInferenceRule rule = new();
+
+        Assert.True(rule.CanInfer(property));
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        Assert.IsType<TimeOnly>(first);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericTimeSpan_CanInferAndIsDeterministic()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("SessionDuration");
+        GenericTimeSpanInferenceRule rule = new();
+
+        Assert.True(rule.CanInfer(property));
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        TimeSpan value = Assert.IsType<TimeSpan>(first);
+        Assert.True(value >= TimeSpan.Zero && value <= TimeSpan.FromHours(24));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericByteArray_CanInferAndIsDeterministic()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("Avatar");
+        GenericByteArrayInferenceRule rule = new();
+
+        Assert.True(rule.CanInfer(property));
+        object first = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+        object second = rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        byte[] value = Assert.IsType<byte[]>(first);
+        Assert.Equal(16, value.Length);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void GenericByteArray_RespectsMaxLength()
+    {
+        IProperty property = InferenceFixtureModel.GetProperty("AvatarThumbnail");
+        GenericByteArrayInferenceRule rule = new();
+
+        byte[] value = (byte[])rule.Infer(property, SeededRandom.FromRootSeed(42), new Dictionary<string, object>())!;
+
+        Assert.Equal(4, value.Length);
+    }
 }

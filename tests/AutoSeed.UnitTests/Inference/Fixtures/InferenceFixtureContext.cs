@@ -17,6 +17,7 @@ public sealed class InferenceFixtureContext : DbContext
             entity.Property(person => person.EqualScalePrice).HasPrecision(2, 2);
             entity.Property(person => person.HugeTotal).HasPrecision(38, 0);
             entity.Property(person => person.Url).HasMaxLength(15);
+            entity.Property(person => person.AvatarThumbnail).HasMaxLength(4);
         });
     }
 
@@ -49,6 +50,12 @@ public sealed class Person
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateOnly BirthDate { get; set; }
+    public TimeOnly PreferredContactTime { get; set; }
+    public TimeSpan SessionDuration { get; set; }
+    public byte[] Avatar { get; set; } = [];
+    public byte[] AvatarThumbnail { get; set; } = [];
 }
 
 public enum PersonStatus

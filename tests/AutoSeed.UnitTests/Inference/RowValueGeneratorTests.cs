@@ -1,4 +1,5 @@
 using EFCore.AutoSeed.Distributions;
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Inference;
 using EFCore.AutoSeed.Inference.Rules;
 using EFCore.AutoSeed.Pipeline;
@@ -151,6 +152,82 @@ public sealed class RowValueGeneratorTests
     public void Constructor_WithNullRules_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new RowValueGenerator(null!));
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithARequiredPropertyNoRuleRecognizes_ThrowsUnsupportedPropertyException()
+    {
+        using TphDiscriminatorContext context = new();
+        IEntityType employeeEntityType = context.Model.FindEntityType(typeof(DiscriminatorEmployee))
+            ?? throw new InvalidOperationException("DiscriminatorEmployee entity type not found.");
+
+        RowValueGenerator generator = CreateGenerator();
+
+        UnsupportedPropertyException exception = Assert.Throws<UnsupportedPropertyException>(
+            () => generator.ValidateRequiredProperties([employeeEntityType]));
+
+        Assert.Equal("Name", exception.PropertyName);
+        Assert.Contains("DiscriminatorEmployee", exception.EntityTypeName);
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_NeverFlagsTheHierarchyDiscriminatorColumn()
+    {
+        using TphDiscriminatorContext context = new();
+        IEntityType employeeEntityType = context.Model.FindEntityType(typeof(DiscriminatorEmployee))
+            ?? throw new InvalidOperationException("DiscriminatorEmployee entity type not found.");
+        string discriminatorPropertyName = employeeEntityType.FindDiscriminatorProperty()!.Name;
+
+        RowValueGenerator generator = new([]);
+
+        UnsupportedPropertyException exception = Assert.Throws<UnsupportedPropertyException>(
+            () => generator.ValidateRequiredProperties([employeeEntityType]));
+
+        Assert.Equal("Name", exception.PropertyName);
+        Assert.NotEqual(discriminatorPropertyName, exception.PropertyName);
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithEveryRequiredPropertyCovered_DoesNotThrow()
+    {
+        RowValueGenerator generator = new(
+        [
+            new NameInferenceRule(),
+            new EmailInferenceRule(),
+            new DocumentInferenceRule(),
+            new PostalCodeInferenceRule(),
+            new PhoneInferenceRule(),
+            new DecimalAmountInferenceRule(),
+            new CorrelatedTotalInferenceRule(),
+            new UrlInferenceRule(),
+            new SlugInferenceRule(),
+            new IpAddressInferenceRule(),
+            new CreatedAtInferenceRule(ReferenceNow),
+            new UpdatedAtInferenceRule(ReferenceNow),
+            new DeletedAtInferenceRule(ReferenceNow),
+            new GenericTextInferenceRule(),
+            new GenericNumberInferenceRule(),
+            new GenericBooleanInferenceRule(),
+            new GenericEnumInferenceRule(),
+            new GenericGuidInferenceRule(),
+            new GenericDateTimeInferenceRule(ReferenceNow),
+            new GenericDateOnlyInferenceRule(ReferenceNow),
+            new GenericTimeOnlyInferenceRule(),
+            new GenericTimeSpanInferenceRule(),
+            new GenericByteArrayInferenceRule(),
+        ]);
+        IEntityType entityType = InferenceFixtureModel.GetPersonEntityType();
+
+        Exception? exception = Record.Exception(() => generator.ValidateRequiredProperties([entityType]));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithNullEntityTypes_ThrowsArgumentNullException()
+    {
+        RowValueGenerator generator = CreateGenerator();
+        Assert.Throws<ArgumentNullException>(() => generator.ValidateRequiredProperties(null!));
     }
 
     [Fact]

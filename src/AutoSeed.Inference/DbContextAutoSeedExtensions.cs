@@ -51,6 +51,9 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
+    /// <exception cref="Exceptions.UnsupportedPropertyException">
+    /// A required property has no database-generated value and no rule recognizes it.
+    /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedAsync(
         this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -66,6 +69,7 @@ public static class DbContextAutoSeedExtensions
             .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order);
 
         return await new Persistence()
             .InsertAsync(
@@ -107,6 +111,9 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
+    /// <exception cref="Exceptions.UnsupportedPropertyException">
+    /// A required property has no database-generated value and no rule recognizes it.
+    /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFastAsync(
         this DbContext context, long seed, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -122,6 +129,7 @@ public static class DbContextAutoSeedExtensions
             .Plan(resolution.Order, read.Edges, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order);
         IBulkInsertProvider provider = BulkInsertProviderFactory.Create(context);
 
         return await new BulkPersistence(provider)
@@ -269,6 +277,9 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
+    /// <exception cref="Exceptions.UnsupportedPropertyException">
+    /// A required property has no database-generated value and no rule recognizes it.
+    /// </exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedFromShapeAsync(
         this DbContext context, long seed, ShapeCapture shape, int scale, AutoSeedOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -304,6 +315,7 @@ public static class DbContextAutoSeedExtensions
             .Plan(resolution.Order, read.Edges, scaleByEntityType, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData);
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order);
 
         return await new Persistence()
             .InsertAsync(
@@ -341,5 +353,10 @@ public static class DbContextAutoSeedExtensions
         new GenericBooleanInferenceRule(),
         new GenericEnumInferenceRule(),
         new GenericGuidInferenceRule(),
+        new GenericDateTimeInferenceRule(ReferenceNow, temporalOptions: options.TemporalClustering),
+        new GenericDateOnlyInferenceRule(ReferenceNow, temporalOptions: options.TemporalClustering),
+        new GenericTimeOnlyInferenceRule(),
+        new GenericTimeSpanInferenceRule(),
+        new GenericByteArrayInferenceRule(),
     ];
 }

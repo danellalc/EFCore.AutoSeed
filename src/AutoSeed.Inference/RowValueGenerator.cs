@@ -1,4 +1,5 @@
 using EFCore.AutoSeed.Distributions;
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -107,6 +108,40 @@ public sealed class RowValueGenerator
         }
 
         return values;
+    }
+
+    /// <summary>
+    /// Checks that every required (non-nullable), non-foreign-key property of each entity type in
+    /// <paramref name="entityTypes"/> that EF Core itself does not generate a value for
+    /// (<see cref="ValueGenerated.Never"/>) is recognized by at least one rule, so
+    /// <see cref="GenerateRow"/> never silently leaves it at its CLR default. Whether a rule
+    /// recognizes a property depends only on the entity type and the property itself, never on
+    /// generated data, so this can run once up front instead of after every row.
+    /// </summary>
+    /// <param name="entityTypes">The entity types about to be seeded.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="UnsupportedPropertyException">A required property is unclaimed.</exception>
+    public void ValidateRequiredProperties(IEnumerable<IEntityType> entityTypes)
+    {
+        ArgumentNullException.ThrowIfNull(entityTypes);
+
+        foreach (IEntityType entityType in entityTypes)
+        {
+            IProperty? discriminatorProperty = entityType.FindDiscriminatorProperty();
+            foreach (IProperty property in entityType.GetProperties())
+            {
+                if (property == discriminatorProperty
+                    || property.IsNullable
+                    || property.IsForeignKey()
+                    || property.ValueGenerated != ValueGenerated.Never
+                    || _rulesByPriority.Any(rule => rule.CanInfer(property)))
+                {
+                    continue;
+                }
+
+                throw new UnsupportedPropertyException(entityType.Name, property.Name, property.ClrType.Name);
+            }
+        }
     }
 
     private void ApplyNullRate(
