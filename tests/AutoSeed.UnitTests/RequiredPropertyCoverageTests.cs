@@ -51,6 +51,13 @@ public sealed class RequiredPropertyCoverageTests
         Assert.Equal(0, await context.Invoices.CountAsync());
     }
 
+#if NET10_0_OR_GREATER
+    /// <summary>
+    /// EF Core 9 (this library's other supported major) does not support an optional complex
+    /// property at all: <c>IsRequired(false)</c> on one throws <see cref="InvalidOperationException"/>
+    /// at model validation time, before this library ever runs. Reaching a nested complex property's
+    /// own path needs the outer one to be optional, so this shape can only be built on EF Core 10.
+    /// </summary>
     [Fact]
     public async Task AutoSeedAsync_WithANestedRequiredComplexProperty_NamesTheFullPath()
     {
@@ -61,6 +68,7 @@ public sealed class RequiredPropertyCoverageTests
 
         Assert.Equal("Total.Currency", exception.PropertyName);
     }
+#endif
 
     private static AppointmentContext NewContext()
     {
@@ -80,11 +88,13 @@ public sealed class RequiredPropertyCoverageTests
         return new InvoiceContext($"{nameof(InvoiceContext)}_{id}");
     }
 
+#if NET10_0_OR_GREATER
     private static NestedComplexPropertyContext NewNestedComplexPropertyContext()
     {
         int id = Interlocked.Increment(ref _databaseCounter);
         return new NestedComplexPropertyContext($"{nameof(NestedComplexPropertyContext)}_{id}");
     }
+#endif
 }
 
 public sealed class AppointmentContext(string databaseName) : DbContext
@@ -138,6 +148,7 @@ public sealed class Invoice
 
 public readonly record struct Money(decimal Amount, string Currency);
 
+#if NET10_0_OR_GREATER
 public sealed class NestedComplexPropertyContext(string databaseName) : DbContext
 {
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
@@ -169,3 +180,4 @@ public sealed class CurrencyInfo
 {
     public string Code { get; set; } = "";
 }
+#endif
