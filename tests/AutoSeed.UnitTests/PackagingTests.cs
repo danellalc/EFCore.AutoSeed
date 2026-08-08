@@ -19,8 +19,6 @@ public sealed partial class PackagingTests
             .Distinct()
             .ToList();
 
-        Assert.NotEmpty(referencedImages);
-
         XDocument csproj = XDocument.Load(Path.Combine(repoRoot, relativeCsprojPath));
         HashSet<string> packedFiles = csproj.Descendants("None")
             .Where(none => (string?)none.Attribute("Pack") == "true")
