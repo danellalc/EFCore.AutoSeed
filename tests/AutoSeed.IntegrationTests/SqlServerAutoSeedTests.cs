@@ -186,6 +186,48 @@ public sealed class SqlServerAutoSeedTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task AutoSeedFastAsync_WithATemporalTable_DoesNotFailOnThePeriodColumns()
+    {
+        await CreateDatabaseAsync(_connectionString, "temporal_fast");
+
+        DbContextOptions<TemporalContext> options = new DbContextOptionsBuilder<TemporalContext>()
+            .UseSqlServer(WithDatabase(_connectionString, "temporal_fast"))
+            .Options;
+
+        await using TemporalContext context = new(options);
+        await context.Database.EnsureCreatedAsync();
+
+        IReadOnlyDictionary<string, int> result = await context.AutoSeedFastAsync(seed: 42, scale: 20);
+
+        string priceHistoryKey = typeof(PriceHistory).FullName!;
+        Assert.True(result[priceHistoryKey] > 0);
+
+        int actualCount = await context.Prices.CountAsync();
+        Assert.Equal(result[priceHistoryKey], actualCount);
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithATemporalTable_LeavesThePeriodColumnsToTheEngine()
+    {
+        await CreateDatabaseAsync(_connectionString, "temporal_fidelity");
+
+        DbContextOptions<TemporalContext> options = new DbContextOptionsBuilder<TemporalContext>()
+            .UseSqlServer(WithDatabase(_connectionString, "temporal_fidelity"))
+            .Options;
+
+        await using TemporalContext context = new(options);
+        await context.Database.EnsureCreatedAsync();
+
+        IReadOnlyDictionary<string, int> result = await context.AutoSeedAsync(seed: 42, scale: 20);
+
+        string priceHistoryKey = typeof(PriceHistory).FullName!;
+        Assert.True(result[priceHistoryKey] > 0);
+
+        int actualCount = await context.Prices.CountAsync();
+        Assert.Equal(result[priceHistoryKey], actualCount);
+    }
+
     private static async Task CreateDatabaseAsync(string connectionString, string databaseName)
     {
         await using SqlConnection connection = new(connectionString);
@@ -251,4 +293,24 @@ public sealed class OrderItem
     public int OrderId { get; set; }
     public Order Order { get; set; } = null!;
     public decimal UnitPrice { get; set; }
+}
+
+public sealed class TemporalContext(DbContextOptions<TemporalContext> options) : DbContext(options)
+{
+    public DbSet<PriceHistory> Prices => Set<PriceHistory>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PriceHistory>(entity =>
+        {
+            entity.Property(price => price.Amount).HasPrecision(10, 2);
+            entity.ToTable(table => table.IsTemporal());
+        });
+    }
+}
+
+public sealed class PriceHistory
+{
+    public int Id { get; set; }
+    public decimal Amount { get; set; }
 }

@@ -44,6 +44,12 @@ public sealed class Persistence
     /// targets in place of freshly generated ones. An entity type present here is never generated or
     /// inserted, regardless of its row count in <paramref name="plan"/>. Defaults to none excluded.
     /// </param>
+    /// <param name="nullRate">
+    /// For an optional foreign key that is not part of <paramref name="deferredEdges"/>, the chance
+    /// each row leaves it null instead of pointing at a generated principal row. Defaults to
+    /// <c>1</c>, so an optional foreign key stays null, as it always has, unless a caller opts in
+    /// to a lower rate.
+    /// </param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     /// <exception cref="UnsupportedEntityTypeException">
@@ -57,7 +63,8 @@ public sealed class Persistence
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
         CancellationToken cancellationToken,
-        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null)
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null,
+        double nullRate = 1)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(plan);
@@ -67,6 +74,8 @@ public sealed class Persistence
         ArgumentNullException.ThrowIfNull(rootRandom);
 
         IReadOnlyList<GraphEdge> requiredEdges = [.. edges.Where(edge => edge.ForeignKey.IsRequired)];
+        HashSet<GraphEdge> deferredEdgeSet = [.. deferredEdges];
+        IReadOnlyList<GraphEdge> optionalEdges = [.. edges.Where(edge => !edge.ForeignKey.IsRequired && !deferredEdgeSet.Contains(edge))];
         Dictionary<IEntityType, List<object>> insertedByEntityType = [];
 
         foreach (EntityGenerationPlan entityPlan in plan)
@@ -74,7 +83,8 @@ public sealed class Persistence
             List<object> instances = existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true
                 ? [.. existingRows]
                 : await InsertEntityTypeAsync(
-                    context, entityPlan, requiredEdges, insertedByEntityType, generateRow, rootRandom, cancellationToken).ConfigureAwait(false);
+                    context, entityPlan, requiredEdges, optionalEdges, insertedByEntityType, generateRow, rootRandom, nullRate, cancellationToken)
+                    .ConfigureAwait(false);
             insertedByEntityType[entityPlan.EntityType] = instances;
         }
 
@@ -91,9 +101,11 @@ public sealed class Persistence
         DbContext context,
         EntityGenerationPlan entityPlan,
         IReadOnlyList<GraphEdge> requiredEdges,
+        IReadOnlyList<GraphEdge> optionalEdges,
         Dictionary<IEntityType, List<object>> insertedByEntityType,
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
+        double nullRate,
         CancellationToken cancellationToken)
     {
         IEntityType entityType = entityPlan.EntityType;
@@ -115,13 +127,16 @@ public sealed class Persistence
         List<object> instances = new(rows.Count);
         for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
+            SeededRandom rowRandom = entityRandom.Derive(rowIndex);
             object instance = CreateInstance(entityType);
             Dictionary<string, object> deferredValues = ApplyValuesBeforeTracking(entityType, instance, rows[rowIndex]);
             AssignRequiredForeignKeysBeforeTracking(entityType, requiredEdges, entityPlan, instance, rowIndex, driverRowIndices, insertedByEntityType);
+            AssignOptionalForeignKeysBeforeTracking(
+                entityType, optionalEdges, entityPlan, instance, rowIndex, driverRowIndices, insertedByEntityType, rowRandom, nullRate);
 
             context.Add(instance);
             ApplyDeferredValues(context, instance, deferredValues);
-            AssignOwnedTypes(context, entityType, instance, entityRandom.Derive(rowIndex), generateRow);
+            AssignOwnedTypes(context, entityType, instance, rowRandom, generateRow);
             instances.Add(instance);
         }
 
@@ -185,10 +200,10 @@ public sealed class Persistence
 
         foreach (KeyValuePair<string, object> entry in values)
         {
-            PropertyInfo? propertyInfo = entityType.FindProperty(entry.Key)?.PropertyInfo;
-            if (propertyInfo is not null && propertyInfo.CanWrite)
+            IProperty? property = entityType.FindProperty(entry.Key);
+            if (property?.PropertyInfo is PropertyInfo propertyInfo && propertyInfo.CanWrite)
             {
-                propertyInfo.SetValue(instance, entry.Value);
+                SetPropertyValue(property, instance, entry.Value);
             }
             else
             {
@@ -238,11 +253,58 @@ public sealed class Persistence
         }
     }
 
+    /// <summary>
+    /// An optional foreign key that is not part of a resolved cycle is never assigned a value by
+    /// any other step in the pipeline, so left alone it would stay at its CLR default (null) on
+    /// every row, regardless of how many valid principal rows exist. Rolls, per row and per edge,
+    /// whether to leave it null instead, so an optional relationship is exercised as often as
+    /// <paramref name="nullRate"/> allows. Unlike a required foreign key, a principal with zero
+    /// generated rows is not an error here: the relationship is skipped for every row instead.
+    /// </summary>
+    private static void AssignOptionalForeignKeysBeforeTracking(
+        IEntityType entityType,
+        IReadOnlyList<GraphEdge> optionalEdges,
+        EntityGenerationPlan entityPlan,
+        object instance,
+        int rowIndex,
+        int[]? driverRowIndices,
+        Dictionary<IEntityType, List<object>> insertedByEntityType,
+        SeededRandom rowRandom,
+        double nullRate)
+    {
+        foreach (GraphEdge edge in optionalEdges)
+        {
+            if (edge.Dependent != entityType)
+            {
+                continue;
+            }
+
+            if (!insertedByEntityType.TryGetValue(edge.Principal, out List<object>? principalInstances) || principalInstances.Count == 0)
+            {
+                continue;
+            }
+
+            string edgeKey = string.Join(",", edge.ForeignKey.Properties.Select(property => property.Name));
+            bool leaveNull = rowRandom.Derive(edgeKey).Derive("NullRate").NextDouble() < nullRate;
+            if (leaveNull)
+            {
+                continue;
+            }
+
+            object principalInstance = edge.Principal == entityPlan.Driver && driverRowIndices is not null
+                ? principalInstances[driverRowIndices[rowIndex]]
+                : principalInstances[rowIndex % principalInstances.Count];
+
+            AssignForeignKeyBeforeTracking(edge, instance, principalInstance);
+        }
+    }
+
     private static void AssignForeignKeyBeforeTracking(GraphEdge edge, object dependentInstance, object principalInstance)
     {
-        if (edge.ForeignKey.DependentToPrincipal?.PropertyInfo is PropertyInfo navigationProperty && navigationProperty.CanWrite)
+        if (edge.ForeignKey.DependentToPrincipal is INavigation navigation
+            && navigation.PropertyInfo is PropertyInfo navigationProperty && navigationProperty.CanWrite)
         {
-            navigationProperty.SetValue(dependentInstance, principalInstance);
+            SetPropertyValue(navigation, dependentInstance, principalInstance);
             return;
         }
 
@@ -251,15 +313,47 @@ public sealed class Persistence
 
         for (int index = 0; index < dependentProperties.Count; index++)
         {
-            if (principalProperties[index].PropertyInfo is not PropertyInfo principalProperty
-                || dependentProperties[index].PropertyInfo is not PropertyInfo dependentProperty
-                || !dependentProperty.CanWrite)
+            IProperty principalProperty = principalProperties[index];
+            IProperty dependentProperty = dependentProperties[index];
+
+            if (principalProperty.PropertyInfo is null
+                || dependentProperty.PropertyInfo is not PropertyInfo dependentPropertyInfo
+                || !dependentPropertyInfo.CanWrite)
             {
                 continue;
             }
 
-            dependentProperty.SetValue(dependentInstance, principalProperty.GetValue(principalInstance));
+            SetPropertyValue(dependentProperty, dependentInstance, GetPropertyValue(principalProperty, principalInstance));
         }
+    }
+
+    /// <summary>
+    /// An implicit many-to-many join entity type is a shared-type entity backed by
+    /// <see cref="Dictionary{TKey, TValue}"/>: its properties are real columns, but reflection sees
+    /// them through <see cref="Dictionary{TKey, TValue}"/>'s indexer instead of a named member, and
+    /// <see cref="PropertyInfo.SetValue(object, object)"/> on an indexer throws
+    /// <see cref="TargetParameterCountException"/> because it never passes the index argument the
+    /// indexer requires.
+    /// </summary>
+    private static void SetPropertyValue(IPropertyBase property, object instance, object? value)
+    {
+        PropertyInfo propertyInfo = property.PropertyInfo!;
+        if (property.IsIndexerProperty())
+        {
+            propertyInfo.SetValue(instance, value, [property.Name]);
+        }
+        else
+        {
+            propertyInfo.SetValue(instance, value);
+        }
+    }
+
+    private static object? GetPropertyValue(IPropertyBase property, object instance)
+    {
+        PropertyInfo propertyInfo = property.PropertyInfo!;
+        return property.IsIndexerProperty()
+            ? propertyInfo.GetValue(instance, [property.Name])
+            : propertyInfo.GetValue(instance);
     }
 
     private static void AssignDeferredForeignKeys(

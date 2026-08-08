@@ -1,4 +1,6 @@
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Inference;
+using EFCore.AutoSeed.UnitTests.Pipeline;
 using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.AutoSeed.UnitTests;
@@ -99,6 +101,34 @@ public sealed class AutoSeedAsyncTests
     }
 
     [Fact]
+    public async Task AutoSeedAsync_WithAnOptionalForeignKey_PopulatesItForSomeRowsAndLeavesOthersNull()
+    {
+        using OptionalForeignKeyContext context = NewOptionalForeignKeyContext();
+
+        await context.AutoSeedAsync(seed: 42, scale: 30, options: new AutoSeedOptions(NullRate: 0.3));
+
+        List<PromoCode> promoCodes = await context.PromoCodes.ToListAsync();
+        List<DiscountedOrder> orders = await context.DiscountedOrders.ToListAsync();
+        HashSet<int> promoCodeIds = [.. promoCodes.Select(promoCode => promoCode.Id)];
+
+        Assert.Contains(orders, order => order.PromoCodeId is not null);
+        Assert.Contains(orders, order => order.PromoCodeId is null);
+        Assert.All(orders, order => Assert.True(order.PromoCodeId is null || promoCodeIds.Contains(order.PromoCodeId.Value)));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithTableSplitEntityTypes_ThrowsUnsupportedEntityTypeException()
+    {
+        using TableSplitContext context = new();
+
+        UnsupportedEntityTypeException exception = await Assert.ThrowsAsync<UnsupportedEntityTypeException>(
+            () => context.AutoSeedAsync(seed: 42, scale: 10));
+
+        Assert.Contains("SplitPersonDetail", exception.EntityTypeName);
+        Assert.Equal(0, await context.People.CountAsync());
+    }
+
+    [Fact]
     public async Task AutoSeedAsync_WithNullContext_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() => DbContextAutoSeedExtensions.AutoSeedAsync(null!, seed: 1, scale: 10));
@@ -184,6 +214,12 @@ public sealed class AutoSeedAsyncTests
         int id = Interlocked.Increment(ref _databaseCounter);
         return new CustomerOrderContext($"{nameof(CustomerOrderContext)}_{id}");
     }
+
+    private static OptionalForeignKeyContext NewOptionalForeignKeyContext()
+    {
+        int id = Interlocked.Increment(ref _databaseCounter);
+        return new OptionalForeignKeyContext($"{nameof(OptionalForeignKeyContext)}_{id}");
+    }
 }
 
 public sealed class CustomerOrderContext(string databaseName) : DbContext
@@ -209,4 +245,25 @@ public sealed class Order
     public int CustomerId { get; set; }
     public Customer Customer { get; set; } = null!;
     public decimal Total { get; set; }
+}
+
+public sealed class OptionalForeignKeyContext(string databaseName) : DbContext
+{
+    public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
+    public DbSet<DiscountedOrder> DiscountedOrders => Set<DiscountedOrder>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+}
+
+public sealed class PromoCode
+{
+    public int Id { get; set; }
+}
+
+public sealed class DiscountedOrder
+{
+    public int Id { get; set; }
+    public int? PromoCodeId { get; set; }
+    public PromoCode? PromoCode { get; set; }
 }

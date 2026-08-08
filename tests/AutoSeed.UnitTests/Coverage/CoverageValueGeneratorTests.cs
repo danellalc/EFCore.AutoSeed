@@ -1,4 +1,5 @@
 using EFCore.AutoSeed.Coverage;
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -130,9 +131,58 @@ public sealed class CoverageValueGeneratorTests
         Assert.Throws<ArgumentNullException>(() => new CoverageValueGenerator().GenerateRow(entityType, null!));
     }
 
+    [Fact]
+    public void ValidateRequiredProperties_WithoutAnyComplexProperty_DoesNotThrow()
+    {
+        using CoverageFixtureContext context = new();
+        IEntityType entityType = GetEntityType(context);
+
+        Exception? exception = Record.Exception(() => CoverageValueGenerator.ValidateRequiredProperties([entityType]));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithARequiredComplexProperty_ThrowsUnsupportedPropertyException()
+    {
+        using ComplexPropertyFixtureContext context = new();
+        IEntityType entityType = context.Model.FindEntityType(typeof(Invoice))
+            ?? throw new InvalidOperationException("Invoice entity type not found.");
+
+        UnsupportedPropertyException exception = Assert.Throws<UnsupportedPropertyException>(
+            () => CoverageValueGenerator.ValidateRequiredProperties([entityType]));
+
+        Assert.Equal("Total", exception.PropertyName);
+    }
+
+    [Fact]
+    public void ValidateRequiredProperties_WithNullEntityTypes_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => CoverageValueGenerator.ValidateRequiredProperties(null!));
+    }
+
     private static IEntityType GetEntityType(CoverageFixtureContext context) =>
         context.Model.FindEntityType(typeof(Widget)) ?? throw new InvalidOperationException("Widget entity type not found.");
 }
+
+public sealed class ComplexPropertyFixtureContext : DbContext
+{
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<Invoice>().ComplexProperty(invoice => invoice.Total);
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(nameof(ComplexPropertyFixtureContext));
+}
+
+public sealed class Invoice
+{
+    public int Id { get; set; }
+    public Money Total { get; set; }
+}
+
+public readonly record struct Money(decimal Amount, string Currency);
 
 public sealed class CoverageFixtureContext : DbContext
 {

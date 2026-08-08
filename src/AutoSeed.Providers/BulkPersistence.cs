@@ -2,6 +2,7 @@ using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace EFCore.AutoSeed.Providers;
@@ -51,6 +52,11 @@ public sealed class BulkPersistence
     /// targets in place of freshly generated ones. An entity type present here is never generated or
     /// inserted, regardless of its row count in <paramref name="plan"/>. Defaults to none excluded.
     /// </param>
+    /// <param name="nullRate">
+    /// For an optional foreign key, the chance each row leaves it null instead of pointing at a
+    /// generated principal row. Defaults to <c>1</c>, so an optional foreign key stays null, as it
+    /// always has, unless a caller opts in to a lower rate.
+    /// </param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     /// <exception cref="UnsupportedEntityTypeException">
@@ -65,7 +71,8 @@ public sealed class BulkPersistence
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
         CancellationToken cancellationToken,
-        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null)
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null,
+        double nullRate = 1)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(plan);
@@ -87,6 +94,7 @@ public sealed class BulkPersistence
         }
 
         IReadOnlyList<GraphEdge> requiredEdges = [.. edges.Where(edge => edge.ForeignKey.IsRequired)];
+        IReadOnlyList<GraphEdge> optionalEdges = [.. edges.Where(edge => !edge.ForeignKey.IsRequired)];
         Dictionary<IEntityType, List<Dictionary<string, object>>> rowsByEntityType = [];
         Dictionary<IEntityType, long> nextIdentityValue = [];
 
@@ -95,7 +103,8 @@ public sealed class BulkPersistence
             List<Dictionary<string, object>> rows = existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true
                 ? [.. existingRows.Select(instance => ToPropertyDictionary(context, entityPlan.EntityType, instance))]
                 : await InsertEntityTypeAsync(
-                    context, entityPlan, requiredEdges, rowsByEntityType, nextIdentityValue, generateRow, rootRandom, cancellationToken)
+                    context, entityPlan, requiredEdges, optionalEdges, rowsByEntityType, nextIdentityValue, generateRow, rootRandom, nullRate,
+                    cancellationToken)
                     .ConfigureAwait(false);
             rowsByEntityType[entityPlan.EntityType] = rows;
         }
@@ -123,10 +132,12 @@ public sealed class BulkPersistence
         DbContext context,
         EntityGenerationPlan entityPlan,
         IReadOnlyList<GraphEdge> requiredEdges,
+        IReadOnlyList<GraphEdge> optionalEdges,
         Dictionary<IEntityType, List<Dictionary<string, object>>> rowsByEntityType,
         Dictionary<IEntityType, long> nextIdentityValue,
         Func<IEntityType, SeededRandom, Dictionary<string, object>> generateRow,
         SeededRandom rootRandom,
+        double nullRate,
         CancellationToken cancellationToken)
     {
         IEntityType entityType = entityPlan.EntityType;
@@ -148,6 +159,9 @@ public sealed class BulkPersistence
         for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             AssignRequiredForeignKeys(entityType, requiredEdges, entityPlan, rows[rowIndex], rowIndex, driverRowIndices, rowsByEntityType);
+            AssignOptionalForeignKeys(
+                entityType, optionalEdges, entityPlan, rows[rowIndex], rowIndex, driverRowIndices, rowsByEntityType,
+                entityRandom.Derive(rowIndex), nullRate);
         }
 
         List<Dictionary<string, object>> columnKeyedRows = new(rows.Count);
@@ -235,26 +249,67 @@ public sealed class BulkPersistence
     /// return them in. Used by both bulk insert providers to know every column a row must carry,
     /// owner columns and flattened owned columns alike.
     /// </summary>
+    /// <param name="context">The context <paramref name="entityType"/> belongs to.</param>
     /// <param name="entityType">The entity type to flatten.</param>
     /// <returns>Every property to write, paired with its column name, in a stable order.</returns>
-    internal static IReadOnlyList<(IProperty Property, string ColumnName)> GetFlattenedColumns(IEntityType entityType)
+    internal static IReadOnlyList<(IProperty Property, string ColumnName)> GetFlattenedColumns(DbContext context, IEntityType entityType)
     {
         List<(IProperty Property, string ColumnName)> columns = [];
-        CollectFlattenedColumns(entityType, columns);
+        CollectFlattenedColumns(context, entityType, columns);
         return columns;
     }
 
-    private static void CollectFlattenedColumns(IEntityType entityType, List<(IProperty Property, string ColumnName)> columns)
+    private static void CollectFlattenedColumns(DbContext context, IEntityType entityType, List<(IProperty Property, string ColumnName)> columns)
     {
+        IReadOnlySet<string> temporalPeriodPropertyNames = GetTemporalPeriodPropertyNames(context, entityType);
+
         foreach (IProperty property in entityType.GetProperties())
         {
+            if (temporalPeriodPropertyNames.Contains(property.Name))
+            {
+                continue;
+            }
+
             columns.Add((property, property.GetColumnName()));
         }
 
         foreach (INavigation navigation in GetOwnedReferenceNavigations(entityType))
         {
-            CollectFlattenedColumns(navigation.TargetEntityType, columns);
+            CollectFlattenedColumns(context, navigation.TargetEntityType, columns);
         }
+    }
+
+    /// <summary>
+    /// A SQL Server temporal table's period start and end shadow properties are
+    /// <c>GENERATED ALWAYS</c> columns: the engine populates them itself and rejects any explicit
+    /// value, including an explicit <see langword="null"/> from
+    /// <see cref="Microsoft.Data.SqlClient.SqlBulkCopy"/>'s column mapping. Their property names
+    /// default to <c>PeriodStart</c>/<c>PeriodEnd</c> without ever being recorded as a model
+    /// annotation, so only <see cref="SqlServerEntityTypeExtensions.GetPeriodStartPropertyName"/> and
+    /// <see cref="SqlServerEntityTypeExtensions.GetPeriodEndPropertyName"/> know the real names. Both
+    /// throw on <paramref name="context"/>'s own read-optimized runtime model, which drops the
+    /// annotations they need, so the lookup goes through the design-time model instead.
+    /// </summary>
+    private static IReadOnlySet<string> GetTemporalPeriodPropertyNames(DbContext context, IEntityType entityType)
+    {
+        HashSet<string> names = [];
+        IEntityType? designTimeEntityType = context.GetService<IDesignTimeModel>().Model.FindEntityType(entityType.Name);
+        if (designTimeEntityType is null || !designTimeEntityType.IsTemporal())
+        {
+            return names;
+        }
+
+        if (designTimeEntityType.GetPeriodStartPropertyName() is string startName)
+        {
+            names.Add(startName);
+        }
+
+        if (designTimeEntityType.GetPeriodEndPropertyName() is string endName)
+        {
+            names.Add(endName);
+        }
+
+        return names;
     }
 
     /// <summary>
@@ -344,6 +399,57 @@ public sealed class BulkPersistence
             {
                 throw new UnsupportedEntityTypeException(
                     entityType.Name, $"required principal '{edge.Principal.Name}' has zero generated rows");
+            }
+
+            Dictionary<string, object> principalRow = edge.Principal == entityPlan.Driver && driverRowIndices is not null
+                ? principalRows[driverRowIndices[rowIndex]]
+                : principalRows[rowIndex % principalRows.Count];
+
+            IReadOnlyList<IProperty> dependentProperties = edge.ForeignKey.Properties;
+            IReadOnlyList<IProperty> principalProperties = edge.ForeignKey.PrincipalKey.Properties;
+
+            for (int index = 0; index < dependentProperties.Count; index++)
+            {
+                row[dependentProperties[index].Name] = principalRow[principalProperties[index].Name];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="AssignRequiredForeignKeys"/>, but for an optional foreign key: rolls, per
+    /// row and per edge, whether to leave it null instead of pointing at a generated principal row,
+    /// so it is exercised as often as <paramref name="nullRate"/> allows instead of always staying
+    /// null. A principal with zero generated rows is not an error here, unlike the required case:
+    /// the relationship is skipped for every row instead.
+    /// </summary>
+    private static void AssignOptionalForeignKeys(
+        IEntityType entityType,
+        IReadOnlyList<GraphEdge> optionalEdges,
+        EntityGenerationPlan entityPlan,
+        Dictionary<string, object> row,
+        int rowIndex,
+        int[]? driverRowIndices,
+        Dictionary<IEntityType, List<Dictionary<string, object>>> rowsByEntityType,
+        SeededRandom rowRandom,
+        double nullRate)
+    {
+        foreach (GraphEdge edge in optionalEdges)
+        {
+            if (edge.Dependent != entityType)
+            {
+                continue;
+            }
+
+            if (!rowsByEntityType.TryGetValue(edge.Principal, out List<Dictionary<string, object>>? principalRows) || principalRows.Count == 0)
+            {
+                continue;
+            }
+
+            string edgeKey = string.Join(",", edge.ForeignKey.Properties.Select(property => property.Name));
+            bool leaveNull = rowRandom.Derive(edgeKey).Derive("NullRate").NextDouble() < nullRate;
+            if (leaveNull)
+            {
+                continue;
             }
 
             Dictionary<string, object> principalRow = edge.Principal == entityPlan.Driver && driverRowIndices is not null

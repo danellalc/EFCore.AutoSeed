@@ -1,3 +1,5 @@
+using EFCore.AutoSeed;
+using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.AutoSeed.UnitTests.Owned;
@@ -58,6 +60,29 @@ public sealed class OwnedTypeTests
         Assert.Contains(cars, car => car.Engine.HorsePower > 0);
     }
 
+    [Fact]
+    public async Task AutoSeedAsync_LeavesAnOwnedCollectionEmpty()
+    {
+        using OrderWithLinesContext context = NewOrderWithLinesContext();
+
+        await context.AutoSeedAsync(seed: 42, scale: 10);
+
+        List<Order> orders = await context.Orders.ToListAsync();
+        Assert.NotEmpty(orders);
+        Assert.All(orders, order => Assert.Empty(order.Lines));
+    }
+
+    [Fact]
+    public async Task AutoSeedExplainAsync_ReportsAnOwnedCollectionAsSkipped()
+    {
+        using OrderWithLinesContext context = NewOrderWithLinesContext();
+
+        AutoSeedExplainResult plan = await context.AutoSeedExplainAsync(seed: 42, scale: 10);
+
+        SkippedEntityType skipped = Assert.Single(plan.SkippedEntityTypes, entry => entry.EntityTypeName.Contains(nameof(OrderLine)));
+        Assert.Contains("Lines", skipped.Reason);
+    }
+
     private static CustomerWithAddressContext NewContext()
     {
         int id = Interlocked.Increment(ref _databaseCounter);
@@ -69,6 +94,35 @@ public sealed class OwnedTypeTests
         int id = Interlocked.Increment(ref _databaseCounter);
         return new VehicleContext($"{nameof(VehicleContext)}_{id}");
     }
+
+    private static OrderWithLinesContext NewOrderWithLinesContext()
+    {
+        int id = Interlocked.Increment(ref _databaseCounter);
+        return new OrderWithLinesContext($"{nameof(OrderWithLinesContext)}_{id}");
+    }
+}
+
+public sealed class OrderWithLinesContext(string databaseName) : DbContext
+{
+    public DbSet<Order> Orders => Set<Order>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<Order>().OwnsMany(order => order.Lines);
+}
+
+public sealed class Order
+{
+    public int Id { get; set; }
+    public List<OrderLine> Lines { get; set; } = [];
+}
+
+public sealed class OrderLine
+{
+    public string Sku { get; set; } = "";
+    public int Quantity { get; set; }
 }
 
 public sealed class CustomerWithAddressContext(string databaseName) : DbContext

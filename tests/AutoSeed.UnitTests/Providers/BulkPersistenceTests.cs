@@ -269,6 +269,44 @@ public sealed class BulkPersistenceTests
             context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, null!, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyAndTheDefaultNullRate_LeavesItAbsent()
+    {
+        using OptionalForeignKeyContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 10, SeededRandom.FromRootSeed(1));
+
+        FakeBulkInsertProvider provider = new();
+        await new BulkPersistence(provider).InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None);
+
+        IReadOnlyList<IReadOnlyDictionary<string, object>> orders = provider.Inserted("PurchaseOrder");
+        Assert.NotEmpty(orders);
+        Assert.All(orders, order => Assert.False(order.ContainsKey("PromoCodeId")));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyAndAPositiveNullRate_PopulatesSomeRowsAndLeavesOthersAbsent()
+    {
+        using OptionalForeignKeyContext context = new();
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 30, SeededRandom.FromRootSeed(1));
+
+        FakeBulkInsertProvider provider = new();
+        await new BulkPersistence(provider).InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None,
+            existingRowsByEntityType: null, nullRate: 0.3);
+
+        HashSet<int> promoCodeIds = [.. provider.Inserted("PromoCode").Select(row => (int)row["Id"])];
+        IReadOnlyList<IReadOnlyDictionary<string, object>> orders = provider.Inserted("PurchaseOrder");
+
+        Assert.Contains(orders, order => order.ContainsKey("PromoCodeId"));
+        Assert.Contains(orders, order => !order.ContainsKey("PromoCodeId"));
+        Assert.All(orders, order => Assert.True(!order.ContainsKey("PromoCodeId") || promoCodeIds.Contains((int)order["PromoCodeId"])));
+    }
+
     private static Dictionary<string, object> GenerateRow(IEntityType entityType, SeededRandom random) => [];
 
     private static Dictionary<string, object> GenerateAddressRow(IEntityType entityType, SeededRandom random)
@@ -375,5 +413,26 @@ public sealed class BulkPersistenceTests
     private sealed class Gadget
     {
         public short Id { get; set; }
+    }
+
+    private sealed class OptionalForeignKeyContext : DbContext
+    {
+        public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
+        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(nameof(OptionalForeignKeyContext));
+    }
+
+    private sealed class PromoCode
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class PurchaseOrder
+    {
+        public int Id { get; set; }
+        public int? PromoCodeId { get; set; }
+        public PromoCode? PromoCode { get; set; }
     }
 }

@@ -195,6 +195,90 @@ public sealed class PersistenceTests
             context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, null!, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyAndTheDefaultNullRate_LeavesItNull()
+    {
+        using IsolatedOptionalForeignKeyContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 10, SeededRandom.FromRootSeed(1));
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None);
+
+        List<PurchaseOrder> orders = await context.PurchaseOrders.ToListAsync();
+        Assert.NotEmpty(orders);
+        Assert.All(orders, order => Assert.Null(order.PromoCodeId));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyAndAPositiveNullRate_PopulatesSomeRowsAndLeavesOthersNull()
+    {
+        using IsolatedOptionalForeignKeyContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan().Plan(resolution.Order, read.Edges, scale: 30, SeededRandom.FromRootSeed(1));
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None,
+            existingRowsByEntityType: null, nullRate: 0.3);
+
+        List<PromoCode> promoCodes = await context.PromoCodes.ToListAsync();
+        List<PurchaseOrder> orders = await context.PurchaseOrders.ToListAsync();
+
+        HashSet<int> promoCodeIds = [.. promoCodes.Select(promoCode => promoCode.Id)];
+        Assert.Contains(orders, order => order.PromoCodeId is not null);
+        Assert.Contains(orders, order => order.PromoCodeId is null);
+        Assert.All(orders, order => Assert.True(order.PromoCodeId is null || promoCodeIds.Contains(order.PromoCodeId.Value)));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyWhosePrincipalHasZeroRows_LeavesItNullWithoutThrowing()
+    {
+        using IsolatedOptionalForeignKeyContext context = new(UniqueDatabaseName());
+        ModelReadResult read = new ModelReader().Read(context.Model);
+        CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+
+        List<EntityGenerationPlan> plan = [.. resolution.Order.Select(entityType => entityType.Name.EndsWith("PromoCode", StringComparison.Ordinal)
+            ? new EntityGenerationPlan(entityType, 0, null, null)
+            : new EntityGenerationPlan(entityType, 10, null, null))];
+
+        await new Persistence().InsertAsync(
+            context, plan, read.Edges, resolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(1), CancellationToken.None,
+            existingRowsByEntityType: null, nullRate: 1);
+
+        List<PurchaseOrder> orders = await context.PurchaseOrders.ToListAsync();
+        Assert.NotEmpty(orders);
+        Assert.All(orders, order => Assert.Null(order.PromoCodeId));
+    }
+
+    [Fact]
+    public async Task InsertAsync_WithAnOptionalForeignKeyAndTheSameSeed_ProducesTheSamePattern()
+    {
+        using IsolatedOptionalForeignKeyContext firstContext = new(UniqueDatabaseName());
+        using IsolatedOptionalForeignKeyContext secondContext = new(UniqueDatabaseName());
+        ModelReadResult firstRead = new ModelReader().Read(firstContext.Model);
+        ModelReadResult secondRead = new ModelReader().Read(secondContext.Model);
+        CycleResolution firstResolution = new CycleResolver().Resolve(firstRead.EntityTypes, firstRead.Edges);
+        CycleResolution secondResolution = new CycleResolver().Resolve(secondRead.EntityTypes, secondRead.Edges);
+        IReadOnlyList<EntityGenerationPlan> firstPlan =
+            new GenerationPlan().Plan(firstResolution.Order, firstRead.Edges, scale: 30, SeededRandom.FromRootSeed(5));
+        IReadOnlyList<EntityGenerationPlan> secondPlan =
+            new GenerationPlan().Plan(secondResolution.Order, secondRead.Edges, scale: 30, SeededRandom.FromRootSeed(5));
+
+        await new Persistence().InsertAsync(
+            firstContext, firstPlan, firstRead.Edges, firstResolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(5),
+            CancellationToken.None, existingRowsByEntityType: null, nullRate: 0.3);
+        await new Persistence().InsertAsync(
+            secondContext, secondPlan, secondRead.Edges, secondResolution.DeferredEdges, GenerateRow, SeededRandom.FromRootSeed(5),
+            CancellationToken.None, existingRowsByEntityType: null, nullRate: 0.3);
+
+        List<bool> firstPattern = await firstContext.PurchaseOrders.OrderBy(order => order.Id).Select(order => order.PromoCodeId != null).ToListAsync();
+        List<bool> secondPattern = await secondContext.PurchaseOrders.OrderBy(order => order.Id).Select(order => order.PromoCodeId != null).ToListAsync();
+
+        Assert.Equal(firstPattern, secondPattern);
+    }
+
     private static async Task<(IReadOnlyDictionary<string, int> Counts, List<Fixtures.Order> Orders)> RunLinearChainPipelineAsync(string databaseName)
     {
         using IsolatedLinearChainContext context = new(databaseName);
@@ -254,6 +338,27 @@ public sealed class PersistenceTests
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
             optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class IsolatedOptionalForeignKeyContext(string databaseName) : DbContext
+    {
+        public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
+        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+    }
+
+    private sealed class PromoCode
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class PurchaseOrder
+    {
+        public int Id { get; set; }
+        public int? PromoCodeId { get; set; }
+        public PromoCode? PromoCode { get; set; }
     }
 
     private sealed class IsolatedCompositeForeignKeyContext(string databaseName) : DbContext

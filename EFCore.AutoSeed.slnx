@@ -3,6 +3,7 @@
     <Project Path="examples/CustomerOrders/CustomerOrders.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/AutoSeed.Analyzers/AutoSeed.Analyzers.csproj" />
     <Project Path="src/AutoSeed.Cli/AutoSeed.Cli.csproj" />
     <Project Path="src/AutoSeed.Core/AutoSeed.Core.csproj" />
     <Project Path="src/AutoSeed.Coverage/AutoSeed.Coverage.csproj" />
@@ -12,6 +13,7 @@
     <Project Path="src/AutoSeed.Shape/AutoSeed.Shape.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AutoSeed.Analyzers.UnitTests/AutoSeed.Analyzers.UnitTests.csproj" />
     <Project Path="tests/AutoSeed.Benchmarks/AutoSeed.Benchmarks.csproj" />
     <Project Path="tests/AutoSeed.IntegrationTests/AutoSeed.IntegrationTests.csproj" />
     <Project Path="tests/AutoSeed.PropertyTests/AutoSeed.PropertyTests.csproj" />

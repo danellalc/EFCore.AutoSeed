@@ -1,3 +1,4 @@
+using EFCore.AutoSeed.Exceptions;
 using EFCore.AutoSeed.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -53,6 +54,43 @@ public sealed class CoverageValueGenerator
         }
 
         return values;
+    }
+
+    /// <summary>
+    /// Checks that no entity type in <paramref name="entityTypes"/> declares a required complex
+    /// property: <see cref="GenerateRow"/> only walks <see cref="IEntityType.GetProperties"/>, which
+    /// never includes a complex property's own properties, so a required one would otherwise reach
+    /// the database at its CLR default.
+    /// </summary>
+    /// <param name="entityTypes">The entity types about to be seeded.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="UnsupportedPropertyException">A required complex property is present.</exception>
+    public static void ValidateRequiredProperties(IEnumerable<IEntityType> entityTypes)
+    {
+        ArgumentNullException.ThrowIfNull(entityTypes);
+
+        foreach (IEntityType entityType in entityTypes)
+        {
+            ValidateComplexProperties(entityType, entityType.GetComplexProperties(), path: null);
+        }
+    }
+
+    private static void ValidateComplexProperties(IEntityType entityType, IEnumerable<IComplexProperty> complexProperties, string? path)
+    {
+        foreach (IComplexProperty complexProperty in complexProperties)
+        {
+            string propertyPath = path is null ? complexProperty.Name : $"{path}.{complexProperty.Name}";
+            if (!complexProperty.IsNullable)
+            {
+                throw new UnsupportedPropertyException(
+                    entityType.Name,
+                    propertyPath,
+                    $"is a complex property ({complexProperty.ClrType.Name}); AutoSeed does not generate values for complex " +
+                    "properties yet, open an issue describing the shape");
+            }
+
+            ValidateComplexProperties(entityType, complexProperty.ComplexType.GetComplexProperties(), propertyPath);
+        }
     }
 
     private static object? GenerateValue(IProperty property, int cycleIndex, SeededRandom random)

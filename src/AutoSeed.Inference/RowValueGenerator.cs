@@ -158,13 +158,18 @@ public sealed class RowValueGenerator
     /// </summary>
     /// <param name="entityTypes">The entity types about to be seeded.</param>
     /// <exception cref="ArgumentNullException"><paramref name="entityTypes"/> is <see langword="null"/>.</exception>
-    /// <exception cref="UnsupportedPropertyException">A required property is unclaimed.</exception>
+    /// <exception cref="UnsupportedPropertyException">
+    /// A required property is unclaimed, or a required complex property is present: neither
+    /// <see cref="GenerateRow"/> nor a custom generator walks a complex property's own properties yet.
+    /// </exception>
     public void ValidateRequiredProperties(IEnumerable<IEntityType> entityTypes)
     {
         ArgumentNullException.ThrowIfNull(entityTypes);
 
         foreach (IEntityType entityType in entityTypes)
         {
+            ValidateComplexProperties(entityType, entityType.GetComplexProperties(), path: null);
+
             IProperty? discriminatorProperty = entityType.FindDiscriminatorProperty();
             foreach (IProperty property in entityType.GetProperties())
             {
@@ -181,6 +186,24 @@ public sealed class RowValueGenerator
                     property.Name,
                     $"no inference rule recognizes its type ({property.ClrType.Name}). Open an issue describing the property's shape");
             }
+        }
+    }
+
+    private static void ValidateComplexProperties(IEntityType entityType, IEnumerable<IComplexProperty> complexProperties, string? path)
+    {
+        foreach (IComplexProperty complexProperty in complexProperties)
+        {
+            string propertyPath = path is null ? complexProperty.Name : $"{path}.{complexProperty.Name}";
+            if (!complexProperty.IsNullable)
+            {
+                throw new UnsupportedPropertyException(
+                    entityType.Name,
+                    propertyPath,
+                    $"is a complex property ({complexProperty.ClrType.Name}); AutoSeed does not generate values for complex " +
+                    "properties yet, open an issue describing the shape");
+            }
+
+            ValidateComplexProperties(entityType, complexProperty.ComplexType.GetComplexProperties(), propertyPath);
         }
     }
 

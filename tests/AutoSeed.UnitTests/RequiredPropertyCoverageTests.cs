@@ -38,6 +38,30 @@ public sealed class RequiredPropertyCoverageTests
         Assert.Equal(0, await context.Students.CountAsync());
     }
 
+    [Fact]
+    public async Task AutoSeedAsync_WithARequiredComplexProperty_ThrowsUnsupportedPropertyException()
+    {
+        using InvoiceContext context = NewInvoiceContext();
+
+        UnsupportedPropertyException exception = await Assert.ThrowsAsync<UnsupportedPropertyException>(
+            () => context.AutoSeedAsync(seed: 42, scale: 10));
+
+        Assert.Equal("Total", exception.PropertyName);
+        Assert.Contains("Invoice", exception.EntityTypeName);
+        Assert.Equal(0, await context.Invoices.CountAsync());
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithANestedRequiredComplexProperty_NamesTheFullPath()
+    {
+        using NestedComplexPropertyContext context = NewNestedComplexPropertyContext();
+
+        UnsupportedPropertyException exception = await Assert.ThrowsAsync<UnsupportedPropertyException>(
+            () => context.AutoSeedAsync(seed: 42, scale: 10));
+
+        Assert.Equal("Total.Currency", exception.PropertyName);
+    }
+
     private static AppointmentContext NewContext()
     {
         int id = Interlocked.Increment(ref _databaseCounter);
@@ -48,6 +72,18 @@ public sealed class RequiredPropertyCoverageTests
     {
         int id = Interlocked.Increment(ref _databaseCounter);
         return new GradeContext($"{nameof(GradeContext)}_{id}");
+    }
+
+    private static InvoiceContext NewInvoiceContext()
+    {
+        int id = Interlocked.Increment(ref _databaseCounter);
+        return new InvoiceContext($"{nameof(InvoiceContext)}_{id}");
+    }
+
+    private static NestedComplexPropertyContext NewNestedComplexPropertyContext()
+    {
+        int id = Interlocked.Increment(ref _databaseCounter);
+        return new NestedComplexPropertyContext($"{nameof(NestedComplexPropertyContext)}_{id}");
     }
 }
 
@@ -81,4 +117,55 @@ public sealed class Student
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public char Grade { get; set; }
+}
+
+public sealed class InvoiceContext(string databaseName) : DbContext
+{
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<Invoice>().ComplexProperty(invoice => invoice.Total);
+}
+
+public sealed class Invoice
+{
+    public int Id { get; set; }
+    public Money Total { get; set; }
+}
+
+public readonly record struct Money(decimal Amount, string Currency);
+
+public sealed class NestedComplexPropertyContext(string databaseName) : DbContext
+{
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<PurchaseOrder>().ComplexProperty(order => order.Total, total =>
+        {
+            total.IsRequired(false);
+            total.ComplexProperty(price => price.Currency);
+        });
+}
+
+public sealed class PurchaseOrder
+{
+    public int Id { get; set; }
+    public Price Total { get; set; } = new();
+}
+
+public sealed class Price
+{
+    public decimal Amount { get; set; }
+    public CurrencyInfo Currency { get; set; } = new();
+}
+
+public sealed class CurrencyInfo
+{
+    public string Code { get; set; } = "";
 }

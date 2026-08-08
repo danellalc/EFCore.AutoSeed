@@ -11,9 +11,10 @@ namespace EFCore.AutoSeed.Pipeline;
 public sealed class ModelReader
 {
     /// <summary>
-    /// Reads <paramref name="model"/>, keeping every entity type that is not owned, not abstract,
-    /// and has a primary key, and building a dependency edge for every foreign key between two of
-    /// them that is not itself an inheritance table-splitting link.
+    /// Reads <paramref name="model"/>, keeping every entity type that is not owned, not an implicit
+    /// many-to-many join table, not abstract, and has a primary key, and building a dependency edge
+    /// for every foreign key between two of them that is not itself an inheritance table-splitting
+    /// link.
     /// </summary>
     /// <param name="model">The finalized model of the <see cref="DbContext"/> to seed.</param>
     /// <returns>The seedable entity types, their dependencies, and what was excluded.</returns>
@@ -30,10 +31,20 @@ public sealed class ModelReader
         List<IEntityType> seedable = [];
         List<SkippedEntityType> skipped = [];
 
+        HashSet<IEntityType> manyToManyJoinEntityTypes = [.. model.GetEntityTypes()
+            .SelectMany(entityType => entityType.GetSkipNavigations())
+            .Select(skipNavigation => skipNavigation.JoinEntityType)];
+
         foreach (IEntityType entityType in model.GetEntityTypes())
         {
             if (entityType.IsOwned())
             {
+                continue;
+            }
+
+            if (manyToManyJoinEntityTypes.Contains(entityType))
+            {
+                skipped.Add(new SkippedEntityType(entityType.Name, "implicit many-to-many join table, not populated yet"));
                 continue;
             }
 
@@ -50,6 +61,13 @@ public sealed class ModelReader
             }
 
             seedable.Add(entityType);
+        }
+
+        foreach (INavigation navigation in CollectOwnedCollectionNavigations(seedable))
+        {
+            skipped.Add(new SkippedEntityType(
+                navigation.TargetEntityType.Name,
+                $"owned collection navigation '{navigation.DeclaringEntityType.ShortName()}.{navigation.Name}', not populated yet"));
         }
 
         HashSet<IEntityType> seedableSet = [.. seedable];
@@ -88,6 +106,40 @@ public sealed class ModelReader
             [.. seedable.OrderBy(entityType => entityType.Name, StringComparer.Ordinal)],
             edges,
             [.. skipped.OrderBy(entry => entry.EntityTypeName, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// Walks every owned navigation reachable from <paramref name="entityTypes"/>, recursing through
+    /// owned reference navigations (a nested owned type can itself own a collection), and yields
+    /// every owned collection navigation found: value generation never populates one, so callers
+    /// record it as skipped instead of leaving it silently empty.
+    /// </summary>
+    private static IEnumerable<INavigation> CollectOwnedCollectionNavigations(IEnumerable<IEntityType> entityTypes)
+    {
+        foreach (IEntityType entityType in entityTypes)
+        {
+            foreach (INavigation navigation in CollectOwnedCollectionNavigations(entityType))
+            {
+                yield return navigation;
+            }
+        }
+    }
+
+    private static IEnumerable<INavigation> CollectOwnedCollectionNavigations(IEntityType entityType)
+    {
+        foreach (INavigation navigation in entityType.GetNavigations().Where(navigation => navigation.ForeignKey.IsOwnership))
+        {
+            if (navigation.IsCollection)
+            {
+                yield return navigation;
+                continue;
+            }
+
+            foreach (INavigation nested in CollectOwnedCollectionNavigations(navigation.TargetEntityType))
+            {
+                yield return nested;
+            }
+        }
     }
 
     /// <summary>

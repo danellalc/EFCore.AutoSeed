@@ -25,7 +25,7 @@ public sealed class PostgreSqlBulkInsertProvider : IBulkInsertProvider
             return;
         }
 
-        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(context, entityType);
         string columnList = string.Join(", ", columns.Select(column => Quote(column.ColumnName)));
         string copyCommand = $"COPY {QualifiedTableName(entityType)} ({columnList}) FROM STDIN (FORMAT BINARY)";
 

@@ -26,7 +26,7 @@ public sealed class SqlServerBulkInsertProvider : IBulkInsertProvider
         }
 
         string destinationTableName = QualifiedTableName(entityType);
-        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(entityType);
+        IReadOnlyList<(IProperty Property, string ColumnName)> columns = BulkPersistence.GetFlattenedColumns(context, entityType);
 
         SqlConnection connection = (SqlConnection)context.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open)

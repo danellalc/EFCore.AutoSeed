@@ -62,7 +62,9 @@ public static class DbContextAutoSeedExtensions
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
-    /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
+    /// An entity type has no public parameterless constructor, a required principal has no
+    /// generated rows, or two entity types are table-split (mapped to the same table through a
+    /// shared primary key).
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
@@ -82,6 +84,7 @@ public static class DbContextAutoSeedExtensions
         options ??= AutoSeedOptions.Default;
 
         ModelReadResult read = new ModelReader().Read(context.Model);
+        TableSplittingGuard.EnsureNoTableSplitting(read.Edges);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
@@ -103,7 +106,8 @@ public static class DbContextAutoSeedExtensions
                 (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
                 rootRandom.Derive("Persistence"),
                 cancellationToken,
-                configuration.ExistingRows)
+                configuration.ExistingRows,
+                options.NullRate)
             .ConfigureAwait(false);
     }
 
@@ -145,7 +149,8 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
     /// The model needs a cycle-breaking second pass, declares an inherited entity type, a
     /// single-column identity primary key of a type other than int, long or Guid, has no public
-    /// parameterless constructor, or a required principal has no generated rows.
+    /// parameterless constructor, a required principal has no generated rows, or two entity types
+    /// are table-split (mapped to the same table through a shared primary key).
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
@@ -165,6 +170,7 @@ public static class DbContextAutoSeedExtensions
         options ??= AutoSeedOptions.Default;
 
         ModelReadResult read = new ModelReader().Read(context.Model);
+        TableSplittingGuard.EnsureNoTableSplitting(read.Edges);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
@@ -187,7 +193,8 @@ public static class DbContextAutoSeedExtensions
                 (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
                 rootRandom.Derive("Persistence"),
                 cancellationToken,
-                configuration.ExistingRows)
+                configuration.ExistingRows,
+                options.NullRate)
             .ConfigureAwait(false);
     }
 
@@ -205,6 +212,9 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
+    /// <exception cref="Exceptions.UnsupportedEntityTypeException">
+    /// Two entity types are table-split (mapped to the same table through a shared primary key).
+    /// </exception>
     public static Task<AutoSeedExplainResult> AutoSeedExplainAsync(
         this DbContext context, long seed, int scale, CancellationToken cancellationToken = default)
     {
@@ -212,6 +222,7 @@ public static class DbContextAutoSeedExtensions
         cancellationToken.ThrowIfCancellationRequested();
 
         ModelReadResult read = new ModelReader().Read(context.Model);
+        TableSplittingGuard.EnsureNoTableSplitting(read.Edges);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
@@ -245,18 +256,23 @@ public static class DbContextAutoSeedExtensions
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
-    /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
+    /// An entity type has no public parameterless constructor, a required principal has no
+    /// generated rows, or two entity types are table-split (mapped to the same table through a
+    /// shared primary key).
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
     /// </exception>
+    /// <exception cref="Exceptions.UnsupportedPropertyException">A required complex property is present.</exception>
     public static async Task<IReadOnlyDictionary<string, int>> AutoSeedCoverageAsync(
         this DbContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         ModelReadResult read = new ModelReader().Read(context.Model);
+        TableSplittingGuard.EnsureNoTableSplitting(read.Edges);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
+        CoverageValueGenerator.ValidateRequiredProperties(resolution.Order);
 
         IReadOnlyList<EntityGenerationPlan> plan = new CoveragePlan().Plan(resolution.Order, read.Edges);
 
@@ -319,7 +335,9 @@ public static class DbContextAutoSeedExtensions
     /// The model contains a dependency cycle made entirely of required foreign keys.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
-    /// An entity type has no public parameterless constructor, or a required principal has no generated rows.
+    /// An entity type has no public parameterless constructor, a required principal has no
+    /// generated rows, or two entity types are table-split (mapped to the same table through a
+    /// shared primary key).
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
@@ -339,6 +357,7 @@ public static class DbContextAutoSeedExtensions
         }
 
         ModelReadResult read = new ModelReader().Read(context.Model);
+        TableSplittingGuard.EnsureNoTableSplitting(read.Edges);
         CycleResolution resolution = new CycleResolver().Resolve(read.EntityTypes, read.Edges);
 
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
@@ -372,7 +391,9 @@ public static class DbContextAutoSeedExtensions
                 resolution.DeferredEdges,
                 (entityType, random) => rowValueGenerator.GenerateRow(entityType, random),
                 rootRandom.Derive("Persistence"),
-                cancellationToken)
+                cancellationToken,
+                existingRowsByEntityType: null,
+                nullRate: options.NullRate)
             .ConfigureAwait(false);
     }
 
