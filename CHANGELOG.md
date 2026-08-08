@@ -4,6 +4,58 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/): a change that alters what a given seed generates is a
 breaking change, major version bump, regardless of whether it was also a bug fix.
 
+## [3.0.0]
+
+An audit pass over the pipeline: six real bugs, each reproduced against a real model shape first,
+then fixed with a dedicated test. Three of them are breaking because the previous behavior was
+either silently wrong or crashed with a raw, unnamed exception; the other three are pure fixes with
+no change to already-correct generated data.
+
+### Breaking
+
+- **An optional (nullable) foreign key outside a dependency cycle is now actually populated.**
+  Previously it was always left `null`, regardless of `AutoSeedOptions.NullRate` or how many valid
+  principal rows existed. It now follows the same `NullRate` as any other nullable column (default
+  10%), so it is populated on most rows instead of never. Same seed, same shape of model: more rows
+  now carry a value than v2.0.1 produced.
+- **A required EF Core 8+ complex property (`ComplexProperty`, including a nested one) is now
+  rejected with `UnsupportedPropertyException` instead of being silently left at its CLR default.**
+  `IEntityType.GetProperties()` never sees a complex property, so every rule-based inference path
+  skipped it without anyone noticing; the exception names the full path (`Total.Currency` for a
+  nested case), the same way a required scalar property with no matching rule already did.
+- **Two entity types genuinely table-split, mapped to the very same table through a shared primary
+  key, are now rejected with `UnsupportedEntityTypeException` instead of each getting its own,
+  independently generated row.** Generating both independently either collided on the shared primary
+  key or silently produced two half-formed rows for what the database expects to be one; this shape
+  is structurally different from the already-supported shared-primary-key pattern across two
+  *separate* tables (an `OfficeAssignment` keyed by `InstructorId`), which keeps working exactly as
+  before.
+
+### Added
+
+- `AUTOSEED001`: a Roslyn analyzer, bundled directly in the `EFCore.AutoSeed` package
+  (`analyzers/dotnet/cs`, no separate install), flagging a required self-referencing foreign key
+  (`Employee.ManagerId` pointing back at `Employee`) directly in the IDE. `CycleResolver` already
+  rejects the same shape at seeding time with `UnresolvableCycleException`; this reports it at
+  compile time instead, before a database connection is ever opened.
+
+### Fixed
+
+- An `OwnsMany` owned collection (as opposed to `OwnsOne`) is now reported in `SkippedEntityTypes`
+  and `AutoSeedExplainAsync`'s plan instead of being silently, unexplainedly left empty. It is still
+  left empty: populating an owned collection is future work, not part of this fix.
+- An implicit many-to-many join table (a skip navigation with no explicit join entity class) no
+  longer crashes the entire seeding call with a raw `TargetParameterCountException` from reflection.
+  EF Core represents such a join table as a shared-type entity backed by a `Dictionary<string,
+  object>`, whose "properties" are actually its indexer; `Persistence` now recognizes and reads or
+  writes through that indexer correctly wherever it still applies, and `ModelReader` recognizes the
+  join table itself and skips it (also reported in `SkippedEntityTypes`), since populating it needs
+  collection-navigation fix-up, a materially different code path from every other entity type.
+- A SQL Server temporal table (`.ToTable(b => b.IsTemporal())`) no longer crashes `AutoSeedFastAsync`
+  with a raw `SqlBulkCopy` error demanding the two period columns not be written to. Fidelity mode
+  (`AutoSeedAsync`) was never affected: EF Core's own `SaveChangesAsync` already excludes a
+  database-generated column from the `INSERT` it emits.
+
 ## [2.0.1]
 
 ### Fixed

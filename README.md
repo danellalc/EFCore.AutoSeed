@@ -105,6 +105,19 @@ dotnet tool install -g EFCore.AutoSeed.Cli
 autoseed explain --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll
 ```
 
+### It catches one unseedable shape before you even run it
+
+A required foreign key that points back at its own entity type (`ManagerId` on `Employee`, pointing at `Employee`) can never be satisfied: the very first row has no earlier row of the same type to reference. `AutoSeedAsync` already rejects it at seeding time with a named `UnresolvableCycleException`, but a bundled Roslyn analyzer, `AUTOSEED001`, flags the same shape directly in the IDE, on the C# model class, before a database connection is ever opened:
+
+```
+warning AUTOSEED001: 'Employee.ManagerId' is a required (non-nullable) foreign key back to
+'Employee' itself, via navigation 'Manager'; AutoSeed can never generate a value for the first
+row of a self-referencing entity when the key is required. Make 'ManagerId' nullable, or exclude
+'Employee' from seeding.
+```
+
+No setup: it ships inside the `EFCore.AutoSeed` package and activates as soon as the package is installed.
+
 ### Coverage mode
 
 The opposite of bulk. The *smallest* dataset that exercises everything:
