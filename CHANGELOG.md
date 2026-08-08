@@ -4,6 +4,15 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/): a change that alters what a given seed generates is a
 breaking change, major version bump, regardless of whether it was also a bug fix.
 
+## [2.0.1]
+
+### Fixed
+
+- The README's demo GIF now renders on NuGet.org: it referenced `demo.gif` by a relative path,
+  which NuGet.org's README renderer never resolves regardless of whether the file is bundled in
+  the package, only an absolute URL from a trusted host (`raw.githubusercontent.com`) works. No
+  code change.
+
 ## [2.0.0]
 
 ### Breaking

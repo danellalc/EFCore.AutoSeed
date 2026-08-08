@@ -7,7 +7,7 @@ Seed your database from your EF Core model. One line, full referential integrity
 [![Build](https://img.shields.io/github/actions/workflow/status/danellalc/EFCore.AutoSeed/ci.yml)](https://github.com/danellalc/EFCore.AutoSeed/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Empty database to 64,427 referentially valid rows in 3.0 seconds with AutoSeedFastAsync](demo.gif)
+![Empty database to 64,427 referentially valid rows in 3.0 seconds with AutoSeedFastAsync](https://raw.githubusercontent.com/danellalc/EFCore.AutoSeed/main/demo.gif)
 
 ## The problem
 
