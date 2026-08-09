@@ -10,6 +10,7 @@ internal static class CliApplication
           autoseed explain --context <FullTypeName> --assembly <path-to-dll> [--seed <long>] [--scale <int>]
           autoseed capture --context <FullTypeName> --assembly <path-to-dll> --output <path-to-json>
           autoseed apply --context <FullTypeName> --assembly <path-to-dll> --shape <path-to-json> [--seed <long>] [--scale <int>]
+          autoseed diff --context <FullTypeName> --assembly <path-to-dll> --baseline <path-to-json> [--seed <long>] [--scale <int>] [--update-baseline]
 
         Run 'autoseed <command> --help' for details on a specific command.
         """;
@@ -43,13 +44,14 @@ internal static class CliApplication
             "explain" => await ExplainCommand.RunAsync(remaining).ConfigureAwait(false),
             "capture" => await CaptureCommand.RunAsync(remaining).ConfigureAwait(false),
             "apply" => await ApplyCommand.RunAsync(remaining).ConfigureAwait(false),
+            "diff" => await DiffCommand.RunAsync(remaining).ConfigureAwait(false),
             _ => UnknownCommand(command),
         };
     }
 
     private static int UnknownCommand(string command)
     {
-        Console.Error.WriteLine($"Unknown command '{command}'. Only 'explain', 'capture' and 'apply' are currently implemented.");
+        Console.Error.WriteLine($"Unknown command '{command}'. Only 'explain', 'capture', 'apply' and 'diff' are currently implemented.");
         Console.Error.WriteLine();
         Console.Error.WriteLine(TopLevelUsage);
         return CliExitCodes.UsageError;

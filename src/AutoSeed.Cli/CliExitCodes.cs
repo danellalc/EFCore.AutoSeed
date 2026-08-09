@@ -7,4 +7,5 @@ internal static class CliExitCodes
     internal const int ContextResolutionError = 2;
     internal const int ModelError = 3;
     internal const int UnexpectedError = 4;
+    internal const int DiffFound = 5;
 }
