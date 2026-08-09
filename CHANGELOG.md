@@ -56,6 +56,14 @@ no change to already-correct generated data.
   (`AutoSeedAsync`) was never affected: EF Core's own `SaveChangesAsync` already excludes a
   database-generated column from the `INSERT` it emits.
 
+### Dependencies
+
+- `Microsoft.Data.SqlClient` bumped from `5.2.2` to `6.1.1` (`6.1.0` shipped a `SqlDataReader` regression,
+  fixed in `6.1.1`), and a new `Microsoft.EntityFrameworkCore.SqlServer` reference added, both needed
+  for the temporal table fix above. Both packages were already unconditional transitive dependencies
+  of `EFCore.AutoSeed` for every consumer, PostgreSQL-only included; this changes their version, not
+  whether they are pulled in.
+
 ## [2.0.1]
 
 ### Fixed
