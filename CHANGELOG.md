@@ -6,10 +6,12 @@ breaking change, major version bump, regardless of whether it was also a bug fix
 
 ## [3.0.0]
 
-An audit pass over the pipeline: six real bugs, each reproduced against a real model shape first,
-then fixed with a dedicated test. Three of them are breaking because the previous behavior was
+Two parts: an audit pass over the pipeline (six real bugs, each reproduced against a real model
+shape first, then fixed with a dedicated test), and two new opt-in capabilities requested directly
+off the back of that audit. Three of the six fixes are breaking because the previous behavior was
 either silently wrong or crashed with a raw, unnamed exception; the other three are pure fixes with
-no change to already-correct generated data.
+no change to already-correct generated data. Neither new capability changes what an existing call
+generates.
 
 ### Breaking
 
@@ -38,6 +40,19 @@ no change to already-correct generated data.
   (`Employee.ManagerId` pointing back at `Employee`) directly in the IDE. `CycleResolver` already
   rejects the same shape at seeding time with `UnresolvableCycleException`; this reports it at
   compile time instead, before a database connection is ever opened.
+- `Entity<T>().SeedWith(rows)`: a third option alongside `Exclude()`/`HasRowCount()` for a lookup
+  table, seeding it with an exact, literal set of rows instead of generated ones. Inserted exactly
+  as given, in order; everything else in the model can still reference the rows as valid foreign key
+  targets. `AutoSeedAsync` only for now: `AutoSeedFastAsync` throws `UnsupportedEntityTypeException`
+  naming the entity type if `SeedWith()` was configured for it, rather than silently generating
+  instead.
+- `autoseed diff` (CLI) and `AutoSeedDiff.Compare` (library): compares the seeding plan
+  `AutoSeedExplainAsync` would produce against a saved baseline (`AutoSeedPlanSnapshot`,
+  `AutoSeedPlanFile`), so a model change that alters what gets seeded, a new required property with
+  no matching rule, a newly introduced cycle, an entity type that starts or stops being seedable, a
+  row count shift, shows up as an explicit, reviewable diff instead of only surfacing the next time
+  something actually seeds a database. The CLI form exits non-zero the moment a difference is found,
+  for use as a CI gate; `--update-baseline` accepts the current plan as the new baseline.
 
 ### Fixed
 

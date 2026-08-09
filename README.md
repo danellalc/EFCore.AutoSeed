@@ -81,6 +81,18 @@ await db.AutoSeedAsync(seed: 42, scale: 1_000, configure: seed =>
 
 `HasRowCount` pins an entity type's row count regardless of `scale`, for the opposite case: a table that should always have exactly this many rows.
 
+A third option for the same lookup table, when it does not already have rows to exclude: seed it with exact, literal values instead of generated ones.
+
+```csharp
+await db.AutoSeedAsync(seed: 42, scale: 1_000, configure: seed =>
+    seed.Entity<Status>().SeedWith([
+        new Status { Id = 1, Code = "ACTIVE" },
+        new Status { Id = 2, Code = "INACTIVE" },
+    ]));
+```
+
+Inserted exactly as given, in order, no inference or null rate involved; everything else in the model can still point at these rows as valid foreign key targets. Fidelity mode only for now; `AutoSeedFastAsync` rejects it by name rather than silently falling back to generating.
+
 The same `configure` callback also takes over a single property, for the rare column no inference rule gets right: a PostGIS `geography` column, say, or a code that has to match a specific pattern:
 
 ```csharp
@@ -103,6 +115,29 @@ The same thing is available from the command line:
 ```bash
 dotnet tool install -g EFCore.AutoSeed.Cli
 autoseed explain --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll
+```
+
+### It catches a model that quietly stopped being seedable
+
+A `dotnet build` still succeeds when a migration adds a new required column with no inference rule for it, or turns a nullable foreign key into a cycle. Nothing tells you until the seed either throws at a place you were not expecting or writes different data than before. `autoseed diff` snapshots the plan `AutoSeedExplainAsync` would run, so a change to it shows up as an explicit, reviewable diff in CI:
+
+```bash
+# Once, committed to source control:
+autoseed diff --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll --baseline seed-plan.json --update-baseline
+
+# In CI, every run after:
+autoseed diff --context MyApp.AppDbContext --assembly bin/Release/net10.0/publish/MyApp.dll --baseline seed-plan.json
+```
+
+Exits non-zero the moment the plan actually changes: an entity type starts or stops being seedable, a row count shifts, a skip reason changes, or a cycle appears or disappears. A passing run means the model is still exactly as seedable as when the baseline was written.
+
+The same thing is available from the library, for anyone who wants the diff in a test instead of a separate CI step:
+
+```csharp
+AutoSeedPlanSnapshot baseline = await AutoSeedPlanFile.ReadAsync("seed-plan.json");
+AutoSeedPlanSnapshot current = AutoSeedPlanSnapshot.FromExplainResult(await db.AutoSeedExplainAsync(seed: 42, scale: 1_000));
+AutoSeedDiffResult diff = AutoSeedDiff.Compare(baseline, current);
+Assert.False(diff.HasChanges, diff.ToReport());
 ```
 
 ### It catches one unseedable shape before you even run it
@@ -212,11 +247,11 @@ Outside .NET, **SynthDB** and **Seedfast** take a similar approach for PostgreSQ
 
 ## Roadmap
 
-Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, `autoseed explain`, and an optional `configure` callback that excludes an entity type, pins its row count, or replaces a single property's generator (`AutoSeedAsync`/`AutoSeedFastAsync` only, `AutoSeedExplainAsync`/`AutoSeedFromShapeAsync`/`AutoSeedCoverageAsync` not yet).
+Shipped: the model reader, cycle resolution, ~20 property inference rules including a `Discount`/`AmountDue` correlation alongside `Total`/`Quantity`, long-tail cardinality for related rows, composite keys, owned types (fidelity and fast mode), TPH/TPT/TPC inheritance, global query filter bias, weekday/business-hour temporal clustering, a null rate for nullable columns, optional dirty-data noise (casing, whitespace, diacritics) for free-text values, all four of those configurable through `AutoSeedOptions`, bulk insert (`SqlBulkCopy`, PostgreSQL binary `COPY`) with `int`/`long`/`Guid` identity keys and an equivalence test against `AutoSeedAsync`, production row-count capture and apply (`autoseed capture`/`autoseed apply`, `CaptureShapeAsync`/`AutoSeedFromShapeAsync`), `AutoSeedAsync`/`AutoSeedExplainAsync`/`AutoSeedCoverageAsync`/`AutoSeedFastAsync`, `autoseed explain`, a bundled Roslyn analyzer (`AUTOSEED001`) flagging an unsatisfiable required self-reference at compile time, a plan-diffing CI gate (`autoseed diff`, `AutoSeedDiff`/`AutoSeedPlanSnapshot`), and an optional `configure` callback that excludes an entity type, pins its row count, seeds it with exact rows, or replaces a single property's generator (`AutoSeedAsync` for all four, `AutoSeedFastAsync` for the first three, `AutoSeedExplainAsync`/`AutoSeedFromShapeAsync`/`AutoSeedCoverageAsync` not yet).
 
 Not shipped yet:
 
-- **Bulk insert coverage**: `AutoSeedFastAsync` still rejects TPH/TPT/TPC inheritance and foreign-key cycles, falling back to `AutoSeedAsync` for those.
+- **Bulk insert coverage**: `AutoSeedFastAsync` still rejects TPH/TPT/TPC inheritance and foreign-key cycles, falling back to `AutoSeedAsync` for those. `SeedWith` is also fidelity-mode only.
 - **Per-column shape statistics**: a captured shape holds row counts only today; null fraction, distinct count and value histograms are not captured, so `AutoSeedFromShapeAsync` shapes relative table sizes, not value distributions. `AutoSeedFromShapeAsync` is also fidelity-mode only, no fast-mode equivalent yet.
 - **`configure` on every seeding method**: `AutoSeedAsync` and `AutoSeedFastAsync` only, for now.
 
