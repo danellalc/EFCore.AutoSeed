@@ -6,14 +6,15 @@ namespace EFCore.AutoSeed.Inference;
 
 /// <summary>
 /// Configures per-entity-type overrides for a seeding call: excluding an entity type entirely,
-/// pinning its row count regardless of the call's <c>scale</c>, or replacing how one property's
-/// value is generated. Passed to a seeding method's <c>configure</c> callback; the common case
-/// needs none of this.
+/// pinning its row count regardless of the call's <c>scale</c>, seeding it with an exact, literal
+/// set of rows instead of generated ones, or replacing how one property's value is generated.
+/// Passed to a seeding method's <c>configure</c> callback; the common case needs none of this.
 /// </summary>
 public sealed class SeedConfigurationBuilder
 {
     private readonly Dictionary<Type, Func<DbContext, CancellationToken, Task<IReadOnlyList<object>>>> _excludedEntityReaders = [];
     private readonly Dictionary<Type, int> _rowCountOverrides = [];
+    private readonly Dictionary<Type, IReadOnlyList<object>> _exactRows = [];
     private readonly Dictionary<(Type EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> _customGenerators = [];
 
     /// <summary>
@@ -30,6 +31,8 @@ public sealed class SeedConfigurationBuilder
 
     internal IReadOnlyDictionary<Type, int> RowCountOverrides => _rowCountOverrides;
 
+    internal IReadOnlyDictionary<Type, IReadOnlyList<object>> ExactRows => _exactRows;
+
     internal IReadOnlyDictionary<(Type EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> CustomGenerators =>
         _customGenerators;
 
@@ -39,6 +42,8 @@ public sealed class SeedConfigurationBuilder
             await context.Set<TEntity>().Cast<object>().ToListAsync(cancellationToken).ConfigureAwait(false);
 
     internal void SetRowCount(Type entityType, int rowCount) => _rowCountOverrides[entityType] = rowCount;
+
+    internal void SetExactRows(Type entityType, IReadOnlyList<object> rows) => _exactRows[entityType] = rows;
 
     internal void SetCustomGenerator(Type entityType, string propertyName, Func<SeededRandom, IReadOnlyDictionary<string, object>, object?> generator) =>
         _customGenerators[(entityType, propertyName)] = generator;
@@ -89,6 +94,32 @@ public sealed class EntityConfigurationBuilder<TEntity>
         }
 
         _parent.SetRowCount(typeof(TEntity), rowCount);
+    }
+
+    /// <summary>
+    /// Seeds <typeparamref name="TEntity"/> with exactly <paramref name="rows"/>, in order, instead
+    /// of generating any: a lookup or reference table (a fixed set of statuses, currencies, roles)
+    /// where the exact values, not realistic-looking ones, are what a test needs. Every property on
+    /// every row must already be set the way it should be written; nothing here goes through
+    /// inference, the null rate, dirty-data noise or uniqueness enforcement. Only supported for
+    /// fidelity mode (<c>AutoSeedAsync</c>) and for an entity type with no required foreign key of
+    /// its own, the same restriction <see cref="Exclude"/> and <see cref="HasRowCount"/> already
+    /// have: such a type's row count is always derived from its required principal's.
+    /// </summary>
+    /// <param name="rows">
+    /// The exact rows to insert, in order. A database-generated primary key (an identity column)
+    /// still gets whatever value the database assigns, exactly as it would for
+    /// <see cref="DbContext.Add(object)"/> called directly: give the key a value the model does not
+    /// mark as database-generated if <paramref name="rows"/>' own values must survive as-is.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="rows"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Exceptions.UnsupportedSeedConfigurationException">
+    /// <typeparamref name="TEntity"/> has a required foreign key, thrown when the seeding call resolves this configuration.
+    /// </exception>
+    public void SeedWith(IReadOnlyList<TEntity> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        _parent.SetExactRows(typeof(TEntity), [.. rows.Cast<object>()]);
     }
 
     /// <summary>

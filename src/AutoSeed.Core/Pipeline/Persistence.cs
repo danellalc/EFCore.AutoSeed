@@ -50,6 +50,12 @@ public sealed class Persistence
     /// <c>1</c>, so an optional foreign key stays null, as it always has, unless a caller opts in
     /// to a lower rate.
     /// </param>
+    /// <param name="exactRowsByEntityType">
+    /// Caller-supplied, already fully-formed rows for an entity type configured with
+    /// <c>EntityConfigurationBuilder&lt;TEntity&gt;.SeedWith(rows)</c>: inserted exactly as given, in
+    /// the same dependency-ordered pass as every other entity type, but never generated. Defaults to
+    /// none.
+    /// </param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     /// <exception cref="UnsupportedEntityTypeException">
@@ -64,7 +70,8 @@ public sealed class Persistence
         SeededRandom rootRandom,
         CancellationToken cancellationToken,
         IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? existingRowsByEntityType = null,
-        double nullRate = 1)
+        double nullRate = 1,
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>>? exactRowsByEntityType = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(plan);
@@ -80,11 +87,22 @@ public sealed class Persistence
 
         foreach (EntityGenerationPlan entityPlan in plan)
         {
-            List<object> instances = existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true
-                ? [.. existingRows]
-                : await InsertEntityTypeAsync(
+            List<object> instances;
+            if (existingRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? existingRows) is true)
+            {
+                instances = [.. existingRows];
+            }
+            else if (exactRowsByEntityType?.TryGetValue(entityPlan.EntityType, out IReadOnlyList<object>? exactRows) is true)
+            {
+                instances = await InsertExactRowsAsync(context, exactRows, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                instances = await InsertEntityTypeAsync(
                     context, entityPlan, requiredEdges, optionalEdges, insertedByEntityType, generateRow, rootRandom, nullRate, cancellationToken)
                     .ConfigureAwait(false);
+            }
+
             insertedByEntityType[entityPlan.EntityType] = instances;
         }
 
@@ -137,6 +155,25 @@ public sealed class Persistence
             context.Add(instance);
             ApplyDeferredValues(context, instance, deferredValues);
             AssignOwnedTypes(context, entityType, instance, rowRandom, generateRow);
+            instances.Add(instance);
+        }
+
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return instances;
+    }
+
+    /// <summary>
+    /// Inserts a <c>SeedWith</c> entity type's caller-supplied rows exactly as given: no generation,
+    /// no foreign key assignment, no owned-type population. A database-generated primary key still
+    /// gets whatever value the database assigns, the same as <see cref="DbContext.Add(object)"/>
+    /// called directly would produce.
+    /// </summary>
+    private static async Task<List<object>> InsertExactRowsAsync(DbContext context, IReadOnlyList<object> exactRows, CancellationToken cancellationToken)
+    {
+        List<object> instances = new(exactRows.Count);
+        foreach (object instance in exactRows)
+        {
+            context.Add(instance);
             instances.Add(instance);
         }
 

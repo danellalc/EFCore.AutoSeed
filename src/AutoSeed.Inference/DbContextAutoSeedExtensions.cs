@@ -40,23 +40,25 @@ public static class DbContextAutoSeedExtensions
     /// <param name="scale">The row count for entity types with no required principal.</param>
     /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
     /// <param name="configure">
-    /// Excludes an entity type or pins its row count. The common case needs none of this.
+    /// Excludes an entity type, pins its row count, or seeds it with an exact set of rows instead of
+    /// generated ones. The common case needs none of this.
     /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="configure"/> configures both <c>Exclude()</c> and <c>HasRowCount()</c> for the same entity
-    /// type, or both <c>Exclude()</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
+    /// <paramref name="configure"/> configures more than one of <c>Exclude()</c>, <c>HasRowCount()</c>
+    /// and <c>SeedWith(...)</c> for the same entity type, or configures both <c>Exclude()</c> or
+    /// <c>SeedWith(...)</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
     /// </exception>
     /// <exception cref="Exceptions.InvalidSeedConfigurationException">
     /// <paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s
     /// model, or a custom generator for a property that is not mapped.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedSeedConfigurationException">
-    /// <paramref name="configure"/> excludes or pins the row count of an entity type that has a
-    /// required foreign key.
+    /// <paramref name="configure"/> excludes, pins the row count of, or seeds with exact rows an
+    /// entity type that has a required foreign key.
     /// </exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
@@ -95,7 +97,8 @@ public static class DbContextAutoSeedExtensions
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
 
         RowValueGenerator rowValueGenerator = new(BuildDefaultRules(options), options.NullRate, options.DirtyData, configuration.CustomGenerators);
-        rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(entityType => !configuration.ExistingRows.ContainsKey(entityType)));
+        rowValueGenerator.ValidateRequiredProperties(resolution.Order.Where(
+            entityType => !configuration.ExistingRows.ContainsKey(entityType) && !configuration.ExactRows.ContainsKey(entityType)));
 
         return await new Persistence()
             .InsertAsync(
@@ -107,7 +110,8 @@ public static class DbContextAutoSeedExtensions
                 rootRandom.Derive("Persistence"),
                 cancellationToken,
                 configuration.ExistingRows,
-                options.NullRate)
+                options.NullRate,
+                configuration.ExactRows)
             .ConfigureAwait(false);
     }
 
@@ -122,23 +126,25 @@ public static class DbContextAutoSeedExtensions
     /// <param name="scale">The row count for entity types with no required principal.</param>
     /// <param name="options">Tunes the built-in inference rules. Defaults to <see cref="AutoSeedOptions.Default"/>.</param>
     /// <param name="configure">
-    /// Excludes an entity type or pins its row count. The common case needs none of this.
+    /// Excludes an entity type or pins its row count. <c>SeedWith(...)</c> is not supported here yet;
+    /// use <see cref="AutoSeedAsync"/> for that. The common case needs none of this.
     /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The number of rows inserted, keyed by entity type name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="scale"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="configure"/> configures both <c>Exclude()</c> and <c>HasRowCount()</c> for the same entity
-    /// type, or both <c>Exclude()</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
+    /// <paramref name="configure"/> configures more than one of <c>Exclude()</c>, <c>HasRowCount()</c>
+    /// and <c>SeedWith(...)</c> for the same entity type, or configures both <c>Exclude()</c> or
+    /// <c>SeedWith(...)</c> and <c>Property(...).GenerateWith(...)</c> for the same entity type.
     /// </exception>
     /// <exception cref="Exceptions.InvalidSeedConfigurationException">
     /// <paramref name="configure"/> configures a type that is not an entity type in <paramref name="context"/>'s
     /// model, or a custom generator for a property that is not mapped.
     /// </exception>
     /// <exception cref="Exceptions.UnsupportedSeedConfigurationException">
-    /// <paramref name="configure"/> excludes or pins the row count of an entity type that has a
-    /// required foreign key.
+    /// <paramref name="configure"/> excludes, pins the row count of, or seeds with exact rows an
+    /// entity type that has a required foreign key.
     /// </exception>
     /// <exception cref="Exceptions.UnresolvableCycleException">
     /// The model contains a dependency cycle made entirely of required foreign keys.
@@ -149,8 +155,9 @@ public static class DbContextAutoSeedExtensions
     /// <exception cref="Exceptions.UnsupportedEntityTypeException">
     /// The model needs a cycle-breaking second pass, declares an inherited entity type, a
     /// single-column identity primary key of a type other than int, long or Guid, has no public
-    /// parameterless constructor, a required principal has no generated rows, or two entity types
-    /// are table-split (mapped to the same table through a shared primary key).
+    /// parameterless constructor, a required principal has no generated rows, two entity types
+    /// are table-split (mapped to the same table through a shared primary key), or
+    /// <paramref name="configure"/> uses <c>SeedWith(...)</c>, not supported here yet.
     /// </exception>
     /// <exception cref="Exceptions.UnsatisfiableUniquenessException">
     /// A unique property ran out of deterministic candidates to resolve a collision.
@@ -176,6 +183,11 @@ public static class DbContextAutoSeedExtensions
         SeededRandom rootRandom = SeededRandom.FromRootSeed(seed);
 
         SeedConfiguration configuration = await ResolveConfigurationAsync(context, configure, read.Edges, cancellationToken).ConfigureAwait(false);
+        if (configuration.ExactRows.Count > 0)
+        {
+            throw new UnsupportedEntityTypeException(
+                configuration.ExactRows.Keys.First().Name, "SeedWith is not supported by AutoSeedFastAsync yet; use AutoSeedAsync instead");
+        }
 
         IReadOnlyList<EntityGenerationPlan> plan = new GenerationPlan()
             .Plan(resolution.Order, read.Edges, configuration.ScaleOverrides, scale, rootRandom.Derive("GenerationPlan"));
@@ -436,6 +448,7 @@ public static class DbContextAutoSeedExtensions
             return new SeedConfiguration(
                 new Dictionary<IEntityType, int>(),
                 new Dictionary<IEntityType, IReadOnlyList<object>>(),
+                new Dictionary<IEntityType, IReadOnlyList<object>>(),
                 new Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>>());
         }
 
@@ -451,6 +464,25 @@ public static class DbContextAutoSeedExtensions
                     "reads its actual row count from the database, so a pinned row count can never apply. Remove one of the two calls.",
                     "configure");
             }
+
+            if (builder.ExactRows.ContainsKey(excludedEntityType))
+            {
+                throw new ArgumentException(
+                    $"'{excludedEntityType.Name}' is configured with both Exclude() and SeedWith(): Exclude() reads its " +
+                    "actual rows from the database, so exact caller-supplied rows would never be inserted. Remove one of the two calls.",
+                    "configure");
+            }
+        }
+
+        foreach (Type exactRowsEntityType in builder.ExactRows.Keys)
+        {
+            if (builder.RowCountOverrides.ContainsKey(exactRowsEntityType))
+            {
+                throw new ArgumentException(
+                    $"'{exactRowsEntityType.Name}' is configured with both SeedWith() and HasRowCount(): SeedWith() " +
+                    "already determines its row count from the rows given. Remove one of the two calls.",
+                    "configure");
+            }
         }
 
         foreach ((Type customGeneratorEntityType, string propertyName) in builder.CustomGenerators.Keys)
@@ -460,6 +492,15 @@ public static class DbContextAutoSeedExtensions
                 throw new ArgumentException(
                     $"'{customGeneratorEntityType.Name}' is configured with both Exclude() and GenerateWith() on '{propertyName}': " +
                     "Exclude() reads its existing rows from the database instead of generating any, so the custom generator would " +
+                    "never run. Remove one of the two calls.",
+                    "configure");
+            }
+
+            if (builder.ExactRows.ContainsKey(customGeneratorEntityType))
+            {
+                throw new ArgumentException(
+                    $"'{customGeneratorEntityType.Name}' is configured with both SeedWith() and GenerateWith() on '{propertyName}': " +
+                    "SeedWith() rows are inserted exactly as given instead of generating any, so the custom generator would " +
                     "never run. Remove one of the two calls.",
                     "configure");
             }
@@ -487,6 +528,15 @@ public static class DbContextAutoSeedExtensions
             scaleOverrides[entityType] = rows.Count;
         }
 
+        Dictionary<IEntityType, IReadOnlyList<object>> exactRows = [];
+        foreach (KeyValuePair<Type, IReadOnlyList<object>> entry in builder.ExactRows)
+        {
+            IEntityType entityType = ResolveEntityType(context.Model, entry.Key);
+            EnsureConfigurableEntityType(entityType, requiredEdgesByDependent);
+            exactRows[entityType] = entry.Value;
+            scaleOverrides[entityType] = entry.Value.Count;
+        }
+
         Dictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> customGenerators = [];
         foreach (KeyValuePair<(Type EntityType, string PropertyName), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> entry
             in builder.CustomGenerators)
@@ -500,7 +550,7 @@ public static class DbContextAutoSeedExtensions
             customGenerators[(entityType, entry.Key.PropertyName)] = entry.Value;
         }
 
-        return new SeedConfiguration(scaleOverrides, existingRows, customGenerators);
+        return new SeedConfiguration(scaleOverrides, existingRows, exactRows, customGenerators);
     }
 
     private static IEntityType ResolveEntityType(IModel model, Type clrType) =>
@@ -519,5 +569,6 @@ public static class DbContextAutoSeedExtensions
     private sealed record SeedConfiguration(
         IReadOnlyDictionary<IEntityType, int> ScaleOverrides,
         IReadOnlyDictionary<IEntityType, IReadOnlyList<object>> ExistingRows,
+        IReadOnlyDictionary<IEntityType, IReadOnlyList<object>> ExactRows,
         IReadOnlyDictionary<(IEntityType, string), Func<SeededRandom, IReadOnlyDictionary<string, object>, object?>> CustomGenerators);
 }

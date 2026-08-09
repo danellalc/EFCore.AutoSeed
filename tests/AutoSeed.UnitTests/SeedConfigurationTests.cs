@@ -207,6 +207,142 @@ public sealed class SeedConfigurationTests
     }
 
     [Fact]
+    public async Task AutoSeedAsync_WithSeedWith_InsertsExactlyTheGivenRowsInOrder()
+    {
+        using StoreContext context = NewContext();
+
+        await context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+            seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }, new Status { Id = 2, Code = "INACTIVE" }]));
+
+        List<Status> statuses = await context.Statuses.OrderBy(status => status.Id).ToListAsync();
+        Assert.Equal(2, statuses.Count);
+        Assert.Equal("ACTIVE", statuses[0].Code);
+        Assert.Equal("INACTIVE", statuses[1].Code);
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithSeedWith_UsesTheExactRowsAsForeignKeyTargets()
+    {
+        using StoreContext context = NewContext();
+
+        await context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+            seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }, new Status { Id = 2, Code = "INACTIVE" }]));
+
+        List<Product> products = await context.Products.ToListAsync();
+        Assert.NotEmpty(products);
+        Assert.All(products, product => Assert.True(product.StatusId is 1 or 2));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithSeedWithOfAnEmptyList_GeneratesNoRequiredDependents()
+    {
+        using StoreContext context = NewContext();
+
+        IReadOnlyDictionary<string, int> result = await context.AutoSeedAsync(
+            seed: 42, scale: 37, configure: seed => seed.Entity<Status>().SeedWith([]));
+
+        Assert.Equal(0, await context.Statuses.CountAsync());
+        Assert.Equal(0, await context.Products.CountAsync());
+        Assert.Equal(0, result[typeof(Product).FullName!]);
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_SeedingWithExactRowsAnEntityTypeWithARequiredForeignKey_ThrowsUnsupportedSeedConfigurationException()
+    {
+        using StoreContext context = NewContext();
+
+        string productEntityTypeName = context.Model.FindEntityType(typeof(Product))!.Name;
+        string statusEntityTypeName = context.Model.FindEntityType(typeof(Status))!.Name;
+
+        UnsupportedSeedConfigurationException exception = await Assert.ThrowsAsync<UnsupportedSeedConfigurationException>(
+            () => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+                seed.Entity<Product>().SeedWith([new Product { Id = 1, Name = "Widget", StatusId = 1 }])));
+
+        Assert.Equal(productEntityTypeName, exception.EntityTypeName);
+        Assert.Equal(statusEntityTypeName, exception.PrincipalEntityTypeName);
+        Assert.Equal(0, await context.Products.CountAsync());
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithSeedWithThenHasRowCountOnTheSameEntityType_ThrowsArgumentException()
+    {
+        using StoreContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+        {
+            seed.Entity<Category>().SeedWith([new Category { Id = 1, Name = "Books" }]);
+            seed.Entity<Category>().HasRowCount(5);
+        }));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithHasRowCountThenSeedWithOnTheSameEntityType_ThrowsArgumentException()
+    {
+        using StoreContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+        {
+            seed.Entity<Category>().HasRowCount(5);
+            seed.Entity<Category>().SeedWith([new Category { Id = 1, Name = "Books" }]);
+        }));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithSeedWithThenExcludeOnTheSameEntityType_ThrowsArgumentException()
+    {
+        using StoreContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+        {
+            seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }]);
+            seed.Entity<Status>().Exclude();
+        }));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithExcludeThenSeedWithOnTheSameEntityType_ThrowsArgumentException()
+    {
+        using StoreContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+        {
+            seed.Entity<Status>().Exclude();
+            seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }]);
+        }));
+    }
+
+    [Fact]
+    public async Task AutoSeedAsync_WithSeedWithThenGenerateWithOnTheSameEntityType_ThrowsArgumentException()
+    {
+        using StoreContext context = NewContext();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => context.AutoSeedAsync(seed: 42, scale: 20, configure: seed =>
+        {
+            seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }]);
+            seed.Entity<Status>().Property(status => status.Code).GenerateWith((random, values) => "X");
+        }));
+    }
+
+    [Fact]
+    public async Task AutoSeedFastAsync_WithSeedWith_ThrowsUnsupportedEntityTypeException()
+    {
+        using StoreContext context = NewContext();
+
+        UnsupportedEntityTypeException exception = await Assert.ThrowsAsync<UnsupportedEntityTypeException>(
+            () => context.AutoSeedFastAsync(seed: 42, scale: 20, configure: seed =>
+                seed.Entity<Status>().SeedWith([new Status { Id = 1, Code = "ACTIVE" }])));
+
+        Assert.Contains("Status", exception.EntityTypeName);
+    }
+
+    [Fact]
+    public void EntityConfigurationBuilder_WithNullSeedWithRows_ThrowsArgumentNullException()
+    {
+        SeedConfigurationBuilder builder = new();
+        Assert.Throws<ArgumentNullException>(() => builder.Entity<Category>().SeedWith(null!));
+    }
+
+    [Fact]
     public void EntityConfigurationBuilder_WithANegativeRowCount_ThrowsArgumentOutOfRangeException()
     {
         SeedConfigurationBuilder builder = new();

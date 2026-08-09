@@ -1,12 +1,12 @@
 namespace EFCore.AutoSeed.Exceptions;
 
 /// <summary>
-/// Thrown when the <c>configure</c> callback passed to a seeding method excludes or pins the row
-/// count of an entity type that has a required foreign key. Only an entity type with no required
-/// principal (one <see cref="Pipeline.GenerationPlan"/> would otherwise give <c>scale</c> rows
-/// directly) can be excluded or have its row count pinned: any other entity type's row count is
-/// derived from its principal's, so a value fixed independently of that principal would corrupt
-/// every dependent's own cardinality.
+/// Thrown when the <c>configure</c> callback passed to a seeding method excludes, pins the row
+/// count of, or seeds with exact rows an entity type that has a required foreign key. Only an
+/// entity type with no required principal (one <see cref="Pipeline.GenerationPlan"/> would
+/// otherwise give <c>scale</c> rows directly) can be configured this way: any other entity type's
+/// row count is derived from its principal's, so a value fixed independently of that principal
+/// would corrupt every dependent's own cardinality.
 /// </summary>
 public sealed class UnsupportedSeedConfigurationException : AutoSeedException
 {
@@ -17,9 +17,10 @@ public sealed class UnsupportedSeedConfigurationException : AutoSeedException
     /// <param name="principalEntityTypeName">The full name of the required principal that determines <paramref name="entityTypeName"/>'s row count.</param>
     public UnsupportedSeedConfigurationException(string entityTypeName, string principalEntityTypeName)
         : base(
-            $"Cannot exclude or pin the row count of '{entityTypeName}': it has a required foreign key to " +
-            $"'{principalEntityTypeName}', so its row count is derived from that principal's and cannot be set " +
-            "independently. Only an entity type with no required foreign key supports Exclude() or HasRowCount().")
+            $"Cannot exclude, pin the row count of, or seed exact rows into '{entityTypeName}': it has a required " +
+            $"foreign key to '{principalEntityTypeName}', so its row count is derived from that principal's and " +
+            "cannot be set independently. Only an entity type with no required foreign key supports Exclude(), " +
+            "HasRowCount() or SeedWith().")
     {
         EntityTypeName = entityTypeName;
         PrincipalEntityTypeName = principalEntityTypeName;
